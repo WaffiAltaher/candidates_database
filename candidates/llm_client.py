@@ -22,7 +22,7 @@ def _get_client():
 
 
 class LLMClient:
-    def __init__(self, model: str = "anthropic:claude-sonnet-5-5"):
+    def __init__(self, model: str = "anthropic:claude-sonnet-4-20250514"):
         self.model = model
 
     def send_message(self, system_prompt: str, user_message: str) -> str:
