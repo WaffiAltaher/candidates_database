@@ -178,7 +178,7 @@ async def search(request: Request):
     from candidates.llm_client import LLMClient
     from candidates.search_engine import SearchEngine
 
-    model = os.environ.get("LLM_MODEL", "anthropic:claude-sonnet-4-20250514")
+    model = os.environ.get("LLM_MODEL", "anthropic:claude-sonnet-5-5")
     sql_model = os.environ.get("LLM_MODEL_FAST", "anthropic:claude-haiku-4-5-20251001")
     logger.info("Search using models: summary=%s sql=%s", model, sql_model)
     print(f"[SEARCH] models: summary={model} sql={sql_model}")
@@ -258,7 +258,7 @@ async def upload(request: Request):
         from candidates.cv_extractor import CVExtractor
         from candidates.llm_client import LLMClient
 
-        model = os.environ.get("LLM_MODEL", "anthropic:claude-sonnet-4-20250514")
+        model = os.environ.get("LLM_MODEL", "anthropic:claude-sonnet-5-5")
         llm = LLMClient(model=model)
         db = get_db()
         extractor = CVExtractor(llm, db)

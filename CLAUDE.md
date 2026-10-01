@@ -82,7 +82,7 @@ poetry run pytest
 | `DATABASE_URL_READONLY` | Read-only PostgreSQL connection string (for search queries) | Production only |
 | `DATABASE_PATH` | SQLite file path (default: cvs.db) | Local dev |
 | `ANTHROPIC_API_KEY` | API key for the Anthropics provider used by AISuite | Yes |
-| `LLM_MODEL` | AISuite model string | No (default: anthropic:claude-sonnet-4-20250514) |
+| `LLM_MODEL` | AISuite model string | No (default: anthropic:claude-sonnet-5-5) |
 | `LLM_MODEL_FAST` | AISuite model string for faster/cheaper SQL generation | No (default: anthropic:claude-haiku-4-5-20251001) |
 | `AUTH_SECRET` | HMAC signing secret for tokens | Yes |
 | `AUTH_USERS` | JSON map of username -> SHA-256(password) hash | Yes |
