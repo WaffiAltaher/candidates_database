@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Candidate - CV Search</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+        nav { background: #2c3e50; padding: 1rem 2rem; display: flex; gap: 2rem; align-items: center; }
+        nav a { color: #ecf0f1; text-decoration: none; font-weight: 500; }
+        nav a:hover { color: #3498db; }
+        nav .brand { font-size: 1.2rem; font-weight: 700; }
+        nav .spacer { flex: 1; }
+        .container { max-width: 1200px; margin: 2rem auto; padding: 0 2rem; }
+        .card { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        h1, h2 { margin-bottom: 1rem; color: #2c3e50; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; }
+        a { color: #3498db; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; border: none; cursor: pointer; font-size: 0.9rem; text-decoration: none; }
+        .btn-primary { background: #3498db; color: white; }
+        .btn-primary:hover { background: #2980b9; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-danger:hover { background: #c0392b; }
+        .btn-success { background: #27ae60; color: white; }
+        .btn-success:hover { background: #219a52; }
+        .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
+        .tag { display: inline-block; background: #e8f4fd; color: #2980b9; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem; margin: 0.15rem; }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 2rem; }
+        .detail-grid dt { font-weight: 600; color: #666; }
+        .detail-grid dd { margin-bottom: 0.5rem; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .actions { display: flex; gap: 0.5rem; align-items: center; }
+        .flash { padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
+        .flash-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .flash-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .inline-form { display: flex; gap: 0.5rem; align-items: center; }
+        .inline-form input { flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.95rem; }
+        .tag-removable { font-size: 0.9rem; padding: 0.3rem 0.8rem; }
+        .tag-removable button { background: none; border: none; color: #e74c3c; cursor: pointer; padding: 0 0.3rem; font-size: 1rem; }
+        .logout-btn { background: none; border: 1px solid #ecf0f1; color: #ecf0f1; padding: 0.3rem 0.8rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+        .logout-btn:hover { background: rgba(255,255,255,0.1); }
+        /* Modal */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: white; border-radius: 8px; padding: 2rem; width: 100%; max-width: 500px; }
+        .modal h2 { margin-bottom: 1rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.3rem; font-weight: 500; }
+        .form-group input, .form-group textarea { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.95rem; }
+        .form-group textarea { min-height: 80px; resize: vertical; }
+        .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/index.html" class="brand">CV Search</a>
+        <a href="/index.html">Candidates</a>
+        <a href="/search.html">AI Search</a>
+        <a href="/upload.html">Upload CV</a>
+        <span class="spacer"></span>
+        <button class="logout-btn" onclick="clearToken(); window.location.href='/login.html';">Logout</button>
+    </nav>
+    <div class="container">
+        <div id="flash-container"></div>
+        <div id="content">Loading...</div>
+    </div>
+
+    <!-- Interview Modal -->
+    <div class="modal-overlay" id="interview-modal">
+        <div class="modal">
+            <h2 id="modal-title">Add Interview</h2>
+            <form id="interview-form">
+                <div class="form-group">
+                    <label for="iv-number">Interview Number</label>
+                    <input type="number" id="iv-number" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label for="iv-date">Interview Date</label>
+                    <input type="date" id="iv-date">
+                </div>
+                <div class="form-group">
+                    <label for="iv-interviewer">Interviewer Name</label>
+                    <input type="text" id="iv-interviewer" required>
+                </div>
+                <div class="form-group">
+                    <label for="iv-comments">Comments</label>
+                    <textarea id="iv-comments"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="iv-verdict">Verdict</label>
+                    <input type="text" id="iv-verdict">
+                </div>
+                <input type="hidden" id="iv-edit-id">
+                <div class="modal-actions">
+                    <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-success" id="modal-submit-btn">Add</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+    <script>
+        if (!requireAuth()) throw new Error('redirect');
+
+        const params = new URLSearchParams(window.location.search);
+        const candidateId = params.get('id');
+        if (!candidateId) { window.location.href = '/index.html'; throw new Error('redirect'); }
+
+        let currentCandidate = null;
+
+        function closeModal() {
+            document.getElementById('interview-modal').classList.remove('active');
+        }
+
+        function openAddInterview() {
+            document.getElementById('modal-title').textContent = 'Add Interview';
+            document.getElementById('modal-submit-btn').textContent = 'Add';
+            document.getElementById('iv-edit-id').value = '';
+            const interviews = currentCandidate.interviews || [];
+            document.getElementById('iv-number').value = interviews.length + 1;
+            document.getElementById('iv-date').value = '';
+            document.getElementById('iv-interviewer').value = '';
+            document.getElementById('iv-comments').value = '';
+            document.getElementById('iv-verdict').value = '';
+            document.getElementById('interview-modal').classList.add('active');
+        }
+
+        function openEditInterview(iv) {
+            document.getElementById('modal-title').textContent = 'Edit Interview';
+            document.getElementById('modal-submit-btn').textContent = 'Update';
+            document.getElementById('iv-edit-id').value = iv.id;
+            document.getElementById('iv-number').value = iv.interview_number;
+            document.getElementById('iv-date').value = iv.interview_date || '';
+            document.getElementById('iv-interviewer').value = iv.interviewer_name;
+            document.getElementById('iv-comments').value = iv.comments || '';
+            document.getElementById('iv-verdict').value = iv.verdict || '';
+            document.getElementById('interview-modal').classList.add('active');
+        }
+
+        document.getElementById('interview-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const editId = document.getElementById('iv-edit-id').value;
+            const payload = {
+                interview_number: parseInt(document.getElementById('iv-number').value),
+                interview_date: document.getElementById('iv-date').value || null,
+                interviewer_name: document.getElementById('iv-interviewer').value,
+                comments: document.getElementById('iv-comments').value,
+                verdict: document.getElementById('iv-verdict').value || null,
+            };
+            try {
+                if (editId) {
+                    await api(API.candidates + `/interviews/${editId}`, { method: 'PUT', body: payload });
+                } else {
+                    await api(API.candidates + `/candidates/${candidateId}/interviews`, { method: 'POST', body: payload });
+                }
+                closeModal();
+                loadCandidate();
+            } catch (err) {
+                showFlash(err.message, 'error');
+            }
+        });
+
+        async function deleteInterview(id) {
+            if (!confirm('Delete this interview?')) return;
+            try {
+                await api(API.candidates + `/interviews/${id}`, { method: 'DELETE' });
+                loadCandidate();
+            } catch (err) {
+                showFlash(err.message, 'error');
+            }
+        }
+
+        async function saveVerdict() {
+            const verdict = document.getElementById('verdict-input').value;
+            try {
+                await api(API.candidates + `/candidates/${candidateId}/final-verdict`, {
+                    method: 'POST', body: { final_verdict: verdict || null },
+                });
+                showFlash('Final verdict updated.', 'success');
+            } catch (err) {
+                showFlash(err.message, 'error');
+            }
+        }
+
+        async function addCustomer() {
+            const input = document.getElementById('customer-input');
+            const name = input.value.trim();
+            if (!name) return;
+            try {
+                await api(API.candidates + `/candidates/${candidateId}/proposed-customers`, {
+                    method: 'POST', body: { customer_name: name },
+                });
+                input.value = '';
+                loadCandidate();
+            } catch (err) {
+                showFlash(err.message, 'error');
+            }
+        }
+
+        async function deleteCustomer(id) {
+            try {
+                await api(API.candidates + `/proposed-customers/${id}`, { method: 'DELETE' });
+                loadCandidate();
+            } catch (err) {
+                showFlash(err.message, 'error');
+            }
+        }
+
+        async function loadCandidate() {
+            try {
+                const data = await api(API.candidates + `/candidates/${candidateId}`);
+                if (!data) return;
+                currentCandidate = data.candidate;
+                renderCandidate(currentCandidate);
+            } catch (err) {
+                document.getElementById('content').innerHTML = `<div class="card"><p>Error: ${escapeHtml(err.message)}</p></div>`;
+            }
+        }
+
+        function renderCandidate(c) {
+            const techs = (c.technologies || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('');
+
+            const experiences = (c.experiences || []).map(exp => `
+                <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #eee;">
+                    <strong>${escapeHtml(exp.role) || 'Role not specified'}</strong> at <strong>${escapeHtml(exp.company) || 'Company not specified'}</strong>
+                    <br><small style="color: #666;">${escapeHtml(exp.start_date) || '?'} - ${escapeHtml(exp.end_date) || '?'}</small>
+                    ${exp.description ? `<p style="margin-top: 0.5rem;">${escapeHtml(exp.description)}</p>` : ''}
+                </div>
+            `).join('');
+
+            const customers = (c.proposed_customers || []).map(pc => `
+                <span class="tag tag-removable">
+                    ${escapeHtml(pc.customer_name)}
+                    <button onclick="deleteCustomer(${pc.id})" title="Remove">&times;</button>
+                </span>
+            `).join('');
+
+            const interviewRows = (c.interviews || []).map(iv => `
+                <tr>
+                    <td>${iv.interview_number}</td>
+                    <td>${escapeHtml(iv.interview_date) || '-'}</td>
+                    <td>${escapeHtml(iv.interviewer_name)}</td>
+                    <td>${escapeHtml(iv.verdict) || '-'}</td>
+                    <td>${escapeHtml(iv.comments) || '-'}</td>
+                    <td class="actions">
+                        <button class="btn btn-primary btn-sm" onclick='openEditInterview(${JSON.stringify(iv)})'>Edit</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteInterview(${iv.id})">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+
+            document.getElementById('content').innerHTML = `
+                <h1>${escapeHtml(c.name)}</h1>
+
+                <div class="card">
+                    <h2>Profile</h2>
+                    <dl class="detail-grid">
+                        <dt>Job Title</dt><dd>${escapeHtml(c.job_title) || '-'}</dd>
+                        <dt>Years Experience</dt><dd>${c.years_experience || '-'}</dd>
+                        <dt>University</dt><dd>${escapeHtml(c.university) || '-'}</dd>
+                        <dt>Degree Field</dt><dd>${escapeHtml(c.degree_field) || '-'}</dd>
+                        <dt>Date of Birth</dt><dd>${escapeHtml(c.date_of_birth) || '-'}</dd>
+                    </dl>
+                </div>
+
+                <div class="card">
+                    <h2>Final Verdict</h2>
+                    <div class="inline-form">
+                        <input type="text" id="verdict-input" value="${escapeHtml(c.final_verdict) || ''}" placeholder="Enter final verdict">
+                        <button class="btn btn-primary" onclick="saveVerdict()">Save</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-header">
+                        <h2>Proposed to Customers</h2>
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        ${customers || '<p>No customers yet.</p>'}
+                    </div>
+                    <div class="inline-form">
+                        <input type="text" id="customer-input" placeholder="Customer name">
+                        <button class="btn btn-success" onclick="addCustomer()">Add</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Technologies</h2>
+                    ${techs || '<p>No technologies listed.</p>'}
+                </div>
+
+                <div class="card">
+                    <h2>Work Experience</h2>
+                    ${experiences || '<p>No work experience listed.</p>'}
+                </div>
+
+                <div class="card">
+                    <div class="section-header">
+                        <h2>Interviews</h2>
+                        <button class="btn btn-primary" onclick="openAddInterview()">Add Interview</button>
+                    </div>
+                    ${(c.interviews || []).length > 0 ? `
+                    <table>
+                        <thead>
+                            <tr><th>#</th><th>Date</th><th>Interviewer</th><th>Verdict</th><th>Comments</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody>${interviewRows}</tbody>
+                    </table>` : '<p>No interviews recorded yet.</p>'}
+                </div>
+
+                <a href="/index.html">&larr; Back to candidates</a>
+            `;
+        }
+
+        loadCandidate();
+    </script>
+</body>
+</html>

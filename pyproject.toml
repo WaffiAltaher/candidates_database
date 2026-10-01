@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "candidates-database"
+version = "0.1.0"
+description = "CV management and search system with Scaleway serverless deployment"
+authors = []
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+PyMuPDF = "*"
+python-dotenv = "*"
+PyYAML = "*"
+psycopg2-binary = "*"
+aisuite = "^0.1.14"
+anthropic = "^0.86.0"
+fastapi = "*"
+uvicorn = {version = "*", extras = ["standard"]}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

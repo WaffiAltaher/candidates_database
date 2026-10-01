@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.db
+*.sqlite
+.venv/
+venv/
+dist/
+*.egg-info/
+.pytest_cache/
+
+# Terraform
+terraform/.terraform/
+terraform/*tfstate*
+terraform/**/*tfstate*
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+terraform/dist/
+
+# Local notes that have contained live credentials
+viewlogs.md
+
+# Pen-test notes for the live site; keep this off the public repo
+SECURITY_FINDINGS.md

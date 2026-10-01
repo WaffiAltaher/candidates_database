@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload CV - CV Search</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+        nav { background: #2c3e50; padding: 1rem 2rem; display: flex; gap: 2rem; align-items: center; }
+        nav a { color: #ecf0f1; text-decoration: none; font-weight: 500; }
+        nav a:hover { color: #3498db; }
+        nav .brand { font-size: 1.2rem; font-weight: 700; }
+        nav .spacer { flex: 1; }
+        .container { max-width: 1200px; margin: 2rem auto; padding: 0 2rem; }
+        .card { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        h1 { margin-bottom: 1rem; color: #2c3e50; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.3rem; font-weight: 500; }
+        .form-group input[type="file"] { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.95rem; }
+        .btn-success { background: #27ae60; color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+        .btn-success:hover { background: #219a52; }
+        .btn-success:disabled { background: #95a5a6; cursor: not-allowed; }
+        .flash { padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
+        .flash-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .flash-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .flash-warning { background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
+        .spinner { display: none; margin: 1rem 0; color: #666; }
+        .logout-btn { background: none; border: 1px solid #ecf0f1; color: #ecf0f1; padding: 0.3rem 0.8rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+        .logout-btn:hover { background: rgba(255,255,255,0.1); }
+        .progress-bar-wrap { background: #e9ecef; border-radius: 4px; height: 12px; margin: 0.75rem 0; display: none; }
+        .progress-bar { background: #27ae60; height: 100%; border-radius: 4px; width: 0; transition: width 0.3s; }
+        .progress-label { color: #666; font-size: 0.9rem; margin-bottom: 0.5rem; display: none; }
+        .folder-results { margin-top: 1rem; max-height: 250px; overflow-y: auto; display: none; }
+        .folder-results table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .folder-results th { text-align: left; padding: 0.4rem 0.6rem; background: #f8f9fa; border-bottom: 2px solid #dee2e6; }
+        .folder-results td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #f0f0f0; }
+        .result-ok { color: #155724; }
+        .result-replaced { color: #856404; }
+        .result-error { color: #721c24; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/index.html" class="brand">CV Search</a>
+        <a href="/index.html">Candidates</a>
+        <a href="/search.html">AI Search</a>
+        <a href="/upload.html">Upload CV</a>
+        <span class="spacer"></span>
+        <button class="logout-btn" onclick="clearToken(); window.location.href='/login.html';">Logout</button>
+    </nav>
+    <div class="container">
+        <div id="flash-container"></div>
+        <h1>Upload CV</h1>
+        <div class="card">
+            <form id="upload-form">
+                <div class="form-group">
+                    <label for="pdf-file">Select PDF file</label>
+                    <input type="file" id="pdf-file" accept=".pdf" required>
+                </div>
+                <button type="submit" class="btn-success" id="upload-btn">Upload & Process</button>
+            </form>
+            <div class="spinner" id="spinner">Processing CV... This may take a moment.</div>
+        </div>
+
+        <h1 style="margin-top:2rem;">Upload Folder</h1>
+        <div class="card">
+            <form id="folder-form">
+                <div class="form-group">
+                    <label for="pdf-folder">Select a folder containing PDF files</label>
+                    <input type="file" id="pdf-folder" webkitdirectory multiple accept=".pdf">
+                </div>
+                <button type="submit" class="btn-success" id="folder-btn">Upload All & Process</button>
+            </form>
+            <div class="progress-label" id="folder-progress-label"></div>
+            <div class="progress-bar-wrap" id="folder-progress-wrap">
+                <div class="progress-bar" id="folder-progress-bar"></div>
+            </div>
+            <div class="folder-results" id="folder-results">
+                <table>
+                    <thead><tr><th>File</th><th>Result</th></tr></thead>
+                    <tbody id="folder-results-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script src="/app.js"></script>
+    <script>
+        if (!requireAuth()) throw new Error('redirect');
+
+        document.getElementById('upload-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('pdf-file');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            if (!file.name.toLowerCase().endsWith('.pdf')) {
+                showFlash('Please select a PDF file.', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('upload-btn');
+            const spinner = document.getElementById('spinner');
+            btn.disabled = true;
+            spinner.style.display = 'block';
+
+            try {
+                const base64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const dataUrl = reader.result;
+                        resolve(dataUrl.split(',')[1]);
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+
+                const data = await api(API.upload + '/upload', {
+                    method: 'POST',
+                    body: { filename: file.name, file_data: base64 },
+                });
+
+                if (data) {
+                    if (data.warning) {
+                        showFlash(data.warning, 'warning');
+                    } else {
+                        showFlash(`Successfully ingested CV for: ${data.candidate}`, 'success');
+                    }
+                    fileInput.value = '';
+                }
+            } catch (err) {
+                showFlash(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                spinner.style.display = 'none';
+            }
+        });
+        document.getElementById('folder-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const folderInput = document.getElementById('pdf-folder');
+            const allFiles = Array.from(folderInput.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+
+            if (allFiles.length === 0) {
+                showFlash('No PDF files found in the selected folder.', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('folder-btn');
+            const progressLabel = document.getElementById('folder-progress-label');
+            const progressWrap = document.getElementById('folder-progress-wrap');
+            const progressBar = document.getElementById('folder-progress-bar');
+            const resultsDiv = document.getElementById('folder-results');
+            const resultsBody = document.getElementById('folder-results-body');
+
+            btn.disabled = true;
+            progressLabel.style.display = 'block';
+            progressWrap.style.display = 'block';
+            resultsDiv.style.display = 'block';
+            resultsBody.innerHTML = '';
+
+            let succeeded = 0, replaced = 0, failed = 0;
+
+            for (let i = 0; i < allFiles.length; i++) {
+                const file = allFiles[i];
+                progressLabel.textContent = `Processing ${i + 1} of ${allFiles.length}: ${file.name}`;
+                progressBar.style.width = `${((i) / allFiles.length) * 100}%`;
+
+                const tr = document.createElement('tr');
+                try {
+                    const base64 = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result.split(',')[1]);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(file);
+                    });
+
+                    const data = await api(API.upload + '/upload', {
+                        method: 'POST',
+                        body: { filename: file.name, file_data: base64 },
+                    });
+
+                    if (data.warning) {
+                        replaced++;
+                        tr.innerHTML = `<td>${escapeHtml(file.name)}</td><td class="result-replaced">Replaced: ${escapeHtml(data.candidate)}</td>`;
+                    } else {
+                        succeeded++;
+                        tr.innerHTML = `<td>${escapeHtml(file.name)}</td><td class="result-ok">Added: ${escapeHtml(data.candidate)}</td>`;
+                    }
+                } catch (err) {
+                    failed++;
+                    tr.innerHTML = `<td>${escapeHtml(file.name)}</td><td class="result-error">Error: ${escapeHtml(err.message)}</td>`;
+                }
+                resultsBody.appendChild(tr);
+            }
+
+            progressBar.style.width = '100%';
+            progressLabel.textContent = `Done — ${succeeded} added, ${replaced} replaced, ${failed} failed.`;
+            btn.disabled = false;
+            folderInput.value = '';
+        });
+    </script>
+</body>
+</html>

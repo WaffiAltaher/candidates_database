@@ -1,0 +1,12 @@
+---
+description: Use Poetry for Python environment and commands
+alwaysApply: true
+---
+
+# Poetry Virtual Environment
+
+This project uses Poetry for dependency management.
+
+- **Run Python**: Use `poetry run python` or `poetry run pytest` when executing Python commands in the terminal
+- **Install deps**: Use `poetry install` (never `pip install` for project dependencies)
+- **Add packages**: Use `poetry add <package>` or `poetry add --group dev <package>`

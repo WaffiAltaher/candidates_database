@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - CV Search</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .login-card { background: white; border-radius: 8px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        h1 { margin-bottom: 1.5rem; color: #2c3e50; text-align: center; }
+        label { display: block; margin-bottom: 0.3rem; font-weight: 500; }
+        input[type="password"] { width: 100%; padding: 0.75rem; border: 2px solid #ddd; border-radius: 4px; font-size: 1rem; margin-bottom: 1rem; }
+        input[type="password"]:focus { border-color: #3498db; outline: none; }
+        .btn-primary { display: block; width: 100%; padding: 0.75rem; background: #3498db; color: white; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; }
+        .btn-primary:hover { background: #2980b9; }
+        .error { color: #e74c3c; margin-bottom: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h1>CV Search</h1>
+        <div class="error" id="error-msg"></div>
+        <form id="login-form">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required autofocus style="width: 100%; padding: 0.75rem; border: 2px solid #ddd; border-radius: 4px; font-size: 1rem; margin-bottom: 1rem;">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+            <button type="submit" class="btn-primary">Login</button>
+        </form>
+    </div>
+    <script src="/app.js"></script>
+    <script>
+        // If already logged in, redirect
+        if (getToken()) {
+            window.location.href = '/index.html';
+        }
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const errorEl = document.getElementById('error-msg');
+            errorEl.style.display = 'none';
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            try {
+                const data = await api(API.auth + '/login', {
+                    method: 'POST',
+                    body: { username, password },
+                });
+                if (data && data.token) {
+                    setToken(data.token);
+                    window.location.href = '/index.html';
+                }
+            } catch (err) {
+                errorEl.textContent = err.message;
+                errorEl.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

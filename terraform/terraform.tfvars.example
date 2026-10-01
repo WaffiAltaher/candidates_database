@@ -1,0 +1,8 @@
+# Copy this to terraform.tfvars and fill in real values.
+# terraform.tfvars is gitignored — never commit secrets.
+
+anthropic_api_key    = "sk-ant-..."
+auth_secret          = "some-random-secret-string"
+auth_users           = "{\"admin\":\"8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918\"}"
+allowed_origin       = "https://cv.yourdomain.com"
+frontend_bucket_name = "candidates-db-frontend"
