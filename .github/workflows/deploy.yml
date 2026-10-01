@@ -1,0 +1,91 @@
+# Applies Terraform for production.
+# The job uses the production environment, so it waits for approval before
+# any step runs. It does not build the container image and it does not
+# upload the plan file. Do not enable step debug or TF_LOG here: the plan
+# JSON contains live credentials.
+
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_EC2_METADATA_DISABLED: "true"
+      SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+      SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+      TF_VAR_anthropic_api_key: ${{ secrets.TF_VAR_anthropic_api_key }}
+      TF_VAR_auth_secret: ${{ secrets.TF_VAR_auth_secret }}
+      TF_VAR_auth_users: ${{ secrets.TF_VAR_auth_users }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+        with:
+          terraform_version: 1.5.7
+          terraform_wrapper: false
+
+      - name: Require secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SCW_ACCESS_KEY SCW_SECRET_KEY SCW_DEFAULT_PROJECT_ID TF_VAR_anthropic_api_key TF_VAR_auth_secret TF_VAR_auth_users; do
+            if [ -z "${!name}" ]; then
+              echo "missing ${name}"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - name: Terraform init
+        working-directory: terraform
+        run: terraform init -input=false
+
+      - name: Terraform plan
+        working-directory: terraform
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Reject deletes
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+          terraform show -json tfplan | python3 -c 'import json, sys
+          plan = json.load(sys.stdin)
+          deletes = []
+          for change in plan.get("resource_changes") or []:
+              actions = (change.get("change") or {}).get("actions") or []
+              if "delete" in actions:
+                  deletes.append((change.get("address", "?"), actions))
+          if deletes:
+              for address, actions in deletes:
+                  print(address + ": " + ",".join(actions))
+              raise SystemExit(1)
+          print("no deletes")'
+
+      - name: Terraform apply
+        working-directory: terraform
+        run: terraform apply -input=false tfplan
+
+      - name: Remove the plan file
+        if: always()
+        working-directory: terraform
+        run: rm -f tfplan
