@@ -112,6 +112,10 @@ resource "scaleway_container" "api" {
   http_option    = "redirected"
   deploy         = true
 
+  environment_variables = {
+    LLM_MODEL = "anthropic:claude-sonnet-5-5"
+  }
+
   secret_environment_variables = {
     DATABASE_URL          = local.database_url
     DATABASE_URL_READONLY = local.database_url_readonly
