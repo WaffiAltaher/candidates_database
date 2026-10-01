@@ -14,7 +14,6 @@ dist/
 terraform/.terraform/
 terraform/*tfstate*
 terraform/**/*tfstate*
-terraform/.terraform.lock.hcl
 terraform/terraform.tfvars
 terraform/dist/
 
@@ -23,3 +22,6 @@ viewlogs.md
 
 # Pen-test notes for the live site; keep this off the public repo
 SECURITY_FINDINGS.md
+
+# Local agent discussion; not part of the public repo
+agents-planning.md

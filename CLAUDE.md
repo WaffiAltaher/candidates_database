@@ -7,7 +7,7 @@ Candidates Database - A CV management and search system deployed as a Scaleway S
 ## Architecture
 
 ```
-Route 53 (cv.yourdomain.com) --CNAME--> Scaleway Object Storage (static frontend)
+candidates.ittopia.nl (object storage website) serves the static frontend
 Frontend JS calls a single Scaleway Serverless Container:
   - POST /login         (authentication)
   - GET/POST/PUT/DELETE  (candidates, interviews, verdicts, customers)
@@ -40,14 +40,16 @@ candidates_database/
 │   ├── candidate.html
 │   ├── search.html
 │   └── upload.html
+├── .github/workflows/       # deploy.yml applies Terraform on push to main
 ├── terraform/               # Infrastructure as code
 │   ├── main.tf
 │   ├── variables.tf
 │   ├── outputs.tf
 │   ├── backend.tf
-│   ├── terraform.tfvars     # Secrets (gitignored)
+│   ├── production.auto.tfvars  # Bucket name and CORS origin (not secrets)
+│   ├── terraform.tfvars     # Local secrets only (gitignored, not used by CI)
 │   ├── terraform.tfvars.example
-│   └── build_container.sh   # Build, push, and deploy container
+│   └── build_container.sh   # Build and push the container image only
 ├── dev_server.py            # Local dev server (uvicorn + static files, port 8080)
 ├── pyproject.toml
 └── CLAUDE.md
@@ -89,86 +91,60 @@ poetry run pytest
 
 ### Deployment
 
-Infrastructure is managed with Terraform in the `terraform/` directory. The backend runs as a single Scaleway Serverless Container (FastAPI + uvicorn).
+The public repository is `https://github.com/WaffiAltaher/candidates_database`.
 
-**Prerequisites:**
-- Terraform >= 0.13
-- Docker (for building the container image)
-- `scw` CLI installed and configured (`scw init`) — needed for registry login
-- **Scaleway provider credentials:** Same as the `scw` CLI — usually `~/.config/scw/config.yaml` (or `SCW_CONFIG_PATH`), or env vars `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, `SCW_DEFAULT_PROJECT_ID`.
-- `terraform/terraform.tfvars` configured (copy from `terraform.tfvars.example`)
-- **Remote state (S3 backend):** Uses the **AWS** credential chain, not `config.yaml`. `terraform/backend.tf` includes `profile = "scaleway"` — put your Scaleway access key + secret (S3-compatible API) under `[scaleway]` in `~/.aws/credentials`, or change the `profile` value in `backend.tf` to match your profile name. Bucket: `terraform-bucket` — see `terraform/backend.tf`.
+Infrastructure changes are applied by GitHub Actions, not by a local `terraform apply`. The workflow file is `.github/workflows/deploy.yml`.
 
-#### Deploy everything (one command)
+- It runs on a push to `main`, and when someone starts it manually with `workflow_dispatch`.
+- The job uses the GitHub environment `production` and waits for approval from `WaffiAltaher` before Terraform runs.
+- It plans, stops if that plan deletes any resource, then applies the saved plan. It does not upload the plan file.
+- It does not build or push the container image.
+- Runner is `ubuntu-latest`. Terraform is pinned to `1.5.7`. The Scaleway provider is pinned to `2.70.1` in `terraform/main.tf` and `.terraform.lock.hcl`.
 
-The `build_container.sh` script handles the full flow: create registry, login, build, push, and deploy.
+`gh` commands for this repository must run from `/Users/waffi/rnd/ittopia/candidates_database`. direnv in that directory selects the personal GitHub account `WaffiAltaher`. Outside `/Users/waffi/rnd/ittopia`, the CLI uses a different account.
 
-```bash
-bash terraform/build_container.sh
-```
+#### GitHub environment `production`
 
-#### Step-by-step deployment
+Secrets are stored on that environment only. There are no repository-level Actions secrets. Names:
 
-If you prefer to run each step manually:
+| Secret | Purpose |
+|---|---|
+| `SCW_ACCESS_KEY` | Scaleway Terraform provider |
+| `SCW_SECRET_KEY` | Scaleway Terraform provider |
+| `SCW_DEFAULT_PROJECT_ID` | Scaleway project |
+| `AWS_ACCESS_KEY_ID` | State bucket credentials (Scaleway object storage) |
+| `AWS_SECRET_ACCESS_KEY` | State bucket credentials |
+| `TF_VAR_anthropic_api_key` | Anthropic API key |
+| `TF_VAR_auth_secret` | HMAC signing secret |
+| `TF_VAR_auth_users` | Raw JSON map of username to SHA-256 password hash |
 
-**1. Initialize Terraform (first time only):**
-```bash
-cd terraform
-terraform init    # use -migrate-state if moving local state to remote
-```
+`terraform/production.auto.tfvars` is committed and holds only the frontend bucket name (`candidates.ittopia.nl`) and the CORS origin (`http://candidates.ittopia.nl`). Do not put secrets in that file.
 
-**2. Create the container registry (first time only):**
-```bash
-terraform apply -target=scaleway_registry_namespace.main
-```
+#### Local Terraform
 
-**3. Log in to Scaleway Container Registry:**
-```bash
-scw registry login
-```
-This authenticates Docker with the Scaleway registry using the credentials from your `scw` CLI profile (`~/.config/scw/config.yaml`). The `scw` CLI must be configured first via `scw init`.
+Use this to inspect a plan. Do not apply locally. A local apply races the GitHub job and skips the approval check.
 
-**4. Build the Docker image:**
-```bash
-# From the project root:
-docker build --platform linux/amd64 \
-    -t rg.nl-ams.scw.cloud/candidates-db/candidates-api:latest \
-    -f container/Dockerfile .
-```
-The `--platform linux/amd64` flag is required when building on Apple Silicon (M1/M2/M3) to ensure the image runs on Scaleway's x86 infrastructure.
-
-**5. Push the image to the registry:**
-```bash
-docker push rg.nl-ams.scw.cloud/candidates-db/candidates-api:latest
-```
-
-**6. Deploy the container:**
 ```bash
 cd terraform
-terraform apply
-```
-On first deploy this creates the container. On subsequent deploys, force replacement to pick up the new image:
-```bash
-terraform apply -replace=scaleway_container.api
+export AWS_PROFILE=scaleway
+terraform init -reconfigure
+terraform plan
 ```
 
-#### Deploy frontend only (no Terraform needed)
+State is in the private bucket `terraform-bucket` (`candidates_database/terraform.tfstate` on `https://s3.nl-ams.scw.cloud`). Do not commit state files or plan files. `backend.tf` does not name a credentials profile. Locally, `AWS_PROFILE=scaleway` points at `~/.aws/credentials`. In GitHub Actions the same keys are the `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` secrets.
+
+Scaleway provider credentials for a local plan come from `~/.config/scw/config.yaml`, or from `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and `SCW_DEFAULT_PROJECT_ID`.
+
+#### Container image
+
+`bash terraform/build_container.sh` builds and pushes `rg.nl-ams.scw.cloud/candidates-db/candidates-api:latest`. It requires the `scw` CLI (`scw init`, then `scw registry login`). The `--platform linux/amd64` build is required on Apple Silicon.
+
+Pushing an image does not restart the running container. The next approved GitHub Actions deploy replaces `scaleway_container.api` only when that resource changes. This workflow does not build images, so an image-only push does not roll out a new container by itself.
+
+#### Frontend files
 
 ```bash
 s3cmd put frontend/*.html frontend/*.js s3://candidates.ittopia.nl/ --acl-public
-```
-
-#### Registry credentials
-
-To push images to the Scaleway Container Registry you need:
-
-1. **`scw` CLI configured** — run `scw init` and provide your Scaleway access key, secret key, and default project ID. This creates `~/.config/scw/config.yaml`.
-2. **`scw registry login`** — this command reads credentials from the `scw` config and runs `docker login rg.nl-ams.scw.cloud` on your behalf. It must be re-run if your credentials change or your Docker auth expires.
-3. **IAM permissions** — the Scaleway API key used must have `ContainerRegistryFullAccess` (or at minimum `ContainerRegistryReadWrite`) permission on the project. The default "Owner" or "ProjectManager" roles include this.
-
-If you cannot use the `scw` CLI, you can log in to the registry directly:
-```bash
-docker login rg.nl-ams.scw.cloud -u <SCW_ACCESS_KEY> -p <SCW_SECRET_KEY>
 ```
 
 **What Terraform manages:**
@@ -181,23 +157,10 @@ docker login rg.nl-ams.scw.cloud -u <SCW_ACCESS_KEY> -p <SCW_SECRET_KEY>
 **Notes:**
 - The container image is built from `container/Dockerfile` with the project root as build context
 - It copies the `candidates/` package (including `helpers.py`) into the image
-- The container listens on port 8080 (uvicorn) — Scaleway proxies HTTPS to it
-- `min_scale=0`: the container scales to zero when idle (no cost), but has a cold start on first request
-- Static frontend is hosted on Scaleway Object Storage with website hosting enabled
-- DNS: Route 53 CNAME `cv.yourdomain.com` -> Object Storage endpoint
-
-### Reverting to serverless functions
-
-The previous serverless functions setup is preserved at git tag `v1-serverless-functions`.
-
-```bash
-# Restore all files from the functions version
-git checkout v1-serverless-functions -- .
-
-# Rebuild function zips and deploy
-bash terraform/build_zips.sh
-cd terraform && terraform apply
-```
+- The container listens on port 8080 (uvicorn). Scaleway proxies HTTPS to it
+- `min_scale=0`: the container scales to zero when idle, with a cold start on the next request
+- The app refuses to start if `AUTH_SECRET` is missing, shorter than 24 characters, or equal to `dev-secret-change-me`, or if `ALLOWED_ORIGIN` is empty
+- `terraform/terraform.tfvars` is for local experiments only. CI does not read it
 
 ## Database
 
@@ -213,7 +176,7 @@ HMAC-SHA256 signed tokens with 24h expiry. All endpoints except `/login` require
 
 ### Managing Users
 
-Users are stored as a JSON map of `username -> SHA-256(password)` in the `AUTH_USERS` env var, configured in `terraform/terraform.tfvars`.
+Users are a JSON map of `username -> SHA-256(password)` in the `TF_VAR_auth_users` secret on the GitHub environment `production`. The value is raw JSON, not an HCL string.
 
 **To add a new user:**
 
@@ -222,17 +185,12 @@ Users are stored as a JSON map of `username -> SHA-256(password)` in the `AUTH_U
 echo -n "the_password" | shasum -a 256 | awk '{print $1}'
 ```
 
-2. Add the username and hash to `auth_users` in `terraform/terraform.tfvars`:
-```
-auth_users = "{\"existing_user\":\"existing_hash\",\"new_user\":\"new_hash\"}"
-```
-
-3. Deploy the change:
+2. Update the `TF_VAR_auth_users` environment secret with the full JSON object, including existing users. Run `gh` from this repository's directory so the personal GitHub account is selected:
 ```bash
-cd terraform
-terraform apply
+printf '%s' '{"existing_user":"<existing_hash>","new_user":"<new_hash>"}' \
+  | gh secret set TF_VAR_auth_users --env production --repo WaffiAltaher/candidates_database
 ```
 
-This updates the `AUTH_USERS` secret env var on the container. No image rebuild needed — only env vars change.
+3. Run the deploy workflow and approve it. No image rebuild is required. The workflow updates the container environment variable.
 
-**To remove a user:** Delete their entry from the JSON map in `terraform.tfvars` and run `terraform apply`.
+**To remove a user:** Set the secret to the JSON object without that user, then run and approve the workflow again.

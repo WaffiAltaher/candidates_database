@@ -17,8 +17,12 @@ logger = logging.getLogger("helpers")
 for _noisy in ("httpcore", "httpx", "anthropic", "aisuite"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
-ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
-AUTH_SECRET = os.environ.get("AUTH_SECRET", "dev-secret-change-me")
+ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "")
+AUTH_SECRET = os.environ.get("AUTH_SECRET", "")
+if len(AUTH_SECRET) < 24 or AUTH_SECRET == "dev-secret-change-me":
+    raise RuntimeError("AUTH_SECRET is missing or insecure")
+if not ALLOWED_ORIGIN:
+    raise RuntimeError("ALLOWED_ORIGIN is not set")
 # AUTH_USERS: JSON map of username -> sha256 hash, e.g. {"alice":"abc123...","bob":"def456..."}
 _auth_users_raw = os.environ.get("AUTH_USERS", "")
 AUTH_USERS = json.loads(_auth_users_raw) if _auth_users_raw else {}
