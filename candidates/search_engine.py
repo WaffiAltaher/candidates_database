@@ -11,6 +11,8 @@ from .llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
+SEARCH_FAILED_MESSAGE = "The search could not be run. Try rephrasing your question."
+
 SQL_GENERATION_PROMPT = """You are a SQL query generator for a CV/resume database.
 Given a natural language query, generate a {dialect}-compatible SELECT query.
 
@@ -47,24 +49,25 @@ class SearchEngine:
     def search(self, natural_language_query: str) -> dict:
         """Full search pipeline. Returns dict with sql, raw_results, and summary."""
         sql = self._generate_sql(natural_language_query)
-        logger.info(f"Generated SQL: {sql}")
+        logger.info("Generated SQL: %s", sql)
 
         try:
             raw_results, truncated = self.database.run_generated_query(sql)
         except ValueError as e:
+            logger.warning("Search query rejected: %s", e, exc_info=True)
             return {
                 "sql": sql,
                 "raw_results": [],
                 "truncated": False,
-                "summary": f"Error: Generated query was rejected - {e}",
+                "summary": SEARCH_FAILED_MESSAGE,
             }
-        except Exception as e:
-            logger.error(f"SQL execution failed: {e}")
+        except Exception:
+            logger.error("SQL execution failed", exc_info=True)
             return {
                 "sql": sql,
                 "raw_results": [],
                 "truncated": False,
-                "summary": f"Error executing query: {e}",
+                "summary": SEARCH_FAILED_MESSAGE,
             }
 
         summary = self._summarize_results(natural_language_query, sql, raw_results)
