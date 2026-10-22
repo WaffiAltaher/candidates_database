@@ -2,10 +2,27 @@
 Database layer with dual SQLite/PostgreSQL support for storing structured CV data.
 """
 
+import datetime
+import decimal
 import logging
 import sqlite3
 
 logger = logging.getLogger(__name__)
+
+
+def to_json_safe(value):
+    """Convert driver-specific values (Decimal, dates, bytes) to JSON-serialisable ones."""
+    if isinstance(value, decimal.Decimal):
+        if not value.is_finite():
+            return str(value)
+        return int(value) if value == value.to_integral_value() else float(value)
+    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+        return value.isoformat()
+    if isinstance(value, datetime.timedelta):
+        return str(value)
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return bytes(value).decode("utf-8", errors="replace")
+    return value
 
 
 class Database:
@@ -428,7 +445,10 @@ class Database:
         if cursor.description is None:
             return []
         columns = [desc[0] for desc in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return [
+            {col: to_json_safe(val) for col, val in zip(columns, row)}
+            for row in cursor.fetchall()
+        ]
 
     def get_schema_description(self) -> str:
         """Return a human-readable schema description for LLM prompt construction."""
