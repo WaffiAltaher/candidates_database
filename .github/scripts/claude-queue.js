@@ -196,8 +196,8 @@ module.exports = async ({ github, context, core }) => {
     }
   }
 
-  // A pending run in the concurrency group can be replaced by a newer one,
-  // so a pull_request.closed run may never execute. Catch up here: an issue in
+  // Safety net in case a pull_request.closed run is lost (cancelled, failed,
+  // or the queue of 100 pending runs was full). Catch up here: an issue in
   // progress whose linked PRs (opened during this attempt) are all closed is
   // finished, done if any of them merged.
   async function reconcile() {

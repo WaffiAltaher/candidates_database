@@ -53,12 +53,18 @@ PR is open for review, its issue keeps `claude:in-progress` and no other
 issue starts. The timeout does not fire while an open linked PR exists.
 
 All runs share the concurrency group `claude-queue` with
-`cancel-in-progress: false`, so two runs never dispatch at the same time.
-GitHub keeps only one pending run per group, and a newer pending run replaces
-an older one. To cover a lost "PR closed" run, every run also checks each
+`cancel-in-progress: false` and `queue: max`, so two runs never dispatch at
+the same time, and waiting runs (up to 100) run one by one in the order they
+arrived instead of replacing each other. A burst of new issues or PR closes
+is therefore not dropped.
+
+As a safety net, for example if a run fails, every run also checks each
 in-progress issue: if all its linked PRs from this attempt are closed, it is
-marked `claude:done` (any merged) or `claude:failed`. A lost "issue opened"
-run is not recovered. Add `claude:queued` to that issue by hand.
+marked `claude:done` (any merged) or `claude:failed`.
+
+The queue script is always checked out from the default branch, so a PR
+cannot change how its own close event is handled. Only PRs from branches in
+this repository are handled; PRs from forks are ignored.
 
 ## Start the queue by hand
 
