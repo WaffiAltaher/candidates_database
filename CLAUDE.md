@@ -51,7 +51,7 @@ candidates_database/
 │   ├── variables.tf
 │   ├── outputs.tf
 │   ├── backend.tf
-│   ├── production.auto.tfvars  # Bucket name and CORS origin (not secrets)
+│   ├── production.auto.tfvars  # App hostname and CORS origin (not secrets)
 │   ├── terraform.tfvars     # Local secrets only (gitignored, not used by CI)
 │   ├── terraform.tfvars.example
 │   └── build_container.sh   # Build and push the container image only
@@ -105,7 +105,7 @@ Infrastructure changes are applied by GitHub Actions, not by a local `terraform 
 
 - It runs on a push to `main`, and when someone starts it manually with `workflow_dispatch`.
 - The job uses the GitHub environment `production` and waits for approval from `WaffiAltaher` before Terraform runs.
-- It plans, stops if that plan deletes any resource, then applies the saved plan. It does not upload the plan file.
+- It plans, stops if that plan deletes any resource, then applies the saved plan. It does not upload the plan file. To apply a planned delete, start the workflow manually and put the exact resource addresses, separated by spaces, in the `allow_deletes` input (for example `gh workflow run deploy.yml --ref main -f allow_deletes='scaleway_object_bucket.example'`). Any delete not listed still stops the run. Push runs never allow deletes.
 - It does not build or push the container image.
 - Runner is `ubuntu-latest`. Terraform is pinned to `1.5.7`. The Scaleway provider is pinned to `2.70.1` in `terraform/main.tf` and `.terraform.lock.hcl`.
 
@@ -126,7 +126,7 @@ Secrets are stored on that environment only. There are no repository-level Actio
 | `TF_VAR_auth_secret` | HMAC signing secret |
 | `TF_VAR_auth_users` | Raw JSON map of username to scrypt password hash |
 
-`terraform/production.auto.tfvars` is committed and holds the frontend bucket name (`candidates.ittopia.nl`), the app hostname and the CORS origin `https://candidates.ittopia.nl`. Do not put secrets in that file.
+`terraform/production.auto.tfvars` is committed and holds the app hostname (`candidates.ittopia.nl`) and the CORS origin `https://candidates.ittopia.nl`. Do not put secrets in that file.
 
 #### Local Terraform
 
@@ -160,7 +160,6 @@ The frontend is part of the container image (`COPY frontend/` in `container/Dock
 - IAM application + API keys for DB access (read-write and read-only)
 - Container Registry namespace (`rg.nl-ams.scw.cloud/candidates-db`)
 - Container namespace + 1 serverless container (all API routes)
-- Object Storage bucket for frontend hosting (unused, kept until cleanup)
 - Custom domain `candidates.ittopia.nl` on the container
 
 **Notes:**
@@ -172,7 +171,6 @@ The frontend is part of the container image (`COPY frontend/` in `container/Dock
 - The app refuses to start if `AUTH_SECRET` is missing, shorter than 24 characters, or equal to `dev-secret-change-me`, or if `ALLOWED_ORIGIN` is empty
 - `terraform/terraform.tfvars` is for local experiments only. CI does not read it
 - `candidates.ittopia.nl` is a `scaleway_container_domain`. Its DNS CNAME (Route 53) must point at the container's default domain (`terraform output container_url`) before the domain resource is created. See `docs/adr/0001-serve-frontend-from-container.md`.
-- The `candidates.ittopia.nl` object storage bucket is no longer used to serve the site. It stays in Terraform until a separate cleanup.
 
 ## Database
 

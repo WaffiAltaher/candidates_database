@@ -36,12 +36,6 @@ variable "allowed_origin" {
   }
 }
 
-variable "frontend_bucket_name" {
-  description = "Name for the Object Storage bucket hosting the frontend"
-  type        = string
-  default     = "candidates-db-frontend"
-}
-
 variable "app_hostname" {
   description = "Public hostname bound to the API container (serves the frontend and the API)"
   type        = string
