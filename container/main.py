@@ -10,9 +10,11 @@ import tempfile
 import time
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from candidates.login_limiter import LoginLimiter
 from candidates.helpers import (
     ALLOWED_ORIGIN,
     create_token,
@@ -29,6 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 app = FastAPI()
+login_limiter = LoginLimiter()
 
 app.add_middleware(
     CORSMiddleware,
@@ -78,9 +81,18 @@ async def login(request: Request):
     if not username or not password:
         logger.warning("Login rejected: missing username or password")
         return _json(400, {"error": "Username and password are required"})
-    if not verify_password(username, password):
+    wait = login_limiter.retry_after(username)
+    if wait > 0:
+        logger.warning("Login blocked for user=%s, retry after %ss", username, wait)
+        response = _json(429, {"error": "Too many failed attempts. Try again later."})
+        response.headers["Retry-After"] = str(wait)
+        return response
+    ok = await run_in_threadpool(verify_password, username, password)
+    if not ok:
+        login_limiter.record_failure(username)
         logger.warning("Login failed for user=%s", username)
         return _json(401, {"error": "Invalid username or password"})
+    login_limiter.reset(username)
     logger.info("Login successful for user=%s", username)
     return _json(200, {"token": create_token()})
 
