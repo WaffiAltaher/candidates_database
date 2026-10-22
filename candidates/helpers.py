@@ -2,6 +2,8 @@
 Shared utilities: CORS, auth, response building, DB singleton, route dispatch.
 """
 
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -55,32 +57,44 @@ def response(status_code: int, body: dict) -> dict:
     }
 
 
-def create_token() -> str:
-    """Create an HMAC-SHA256 signed auth token with expiry."""
+def _fingerprint(username: str) -> str:
+    return hashlib.sha256(AUTH_USERS[username].encode("utf-8")).hexdigest()[:16]
+
+
+def _sign(username: str, expiry: int) -> str:
+    message = f"v2|{username}|{expiry}|{_fingerprint(username)}"
+    return hmac.new(AUTH_SECRET.encode(), message.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def create_token(username: str) -> str:
+    """Create a signed token bound to the user and their current password hash.
+
+    Raises KeyError if the username is not in AUTH_USERS.
+    """
+    user_b64 = base64.urlsafe_b64encode(username.encode("utf-8")).decode().rstrip("=")
     expiry = int(time.time()) + TOKEN_EXPIRY
-    payload = str(expiry)
-    signature = hmac.new(
-        AUTH_SECRET.encode(), payload.encode(), hashlib.sha256
-    ).hexdigest()
-    return f"{payload}.{signature}"
+    return f"{user_b64}.{expiry}.{_sign(username, expiry)}"
 
 
-def validate_token(token: str) -> bool:
-    """Validate an HMAC-SHA256 signed token."""
+def validate_token(token: str) -> str | None:
+    """Return the token's username if it is valid, otherwise None. Never raises."""
     try:
         parts = token.split(".")
-        if len(parts) != 2:
-            return False
-        payload, signature = parts
-        expected = hmac.new(
-            AUTH_SECRET.encode(), payload.encode(), hashlib.sha256
-        ).hexdigest()
-        if not hmac.compare_digest(signature, expected):
-            return False
-        expiry = int(payload)
-        return time.time() < expiry
-    except (ValueError, TypeError):
-        return False
+        if len(parts) != 3:
+            return None
+        user_b64, expiry_str, signature = parts
+        padded = user_b64 + "=" * (-len(user_b64) % 4)
+        username = base64.urlsafe_b64decode(padded.encode()).decode("utf-8")
+        expiry = int(expiry_str)
+        if not time.time() < expiry:
+            return None
+        if username not in AUTH_USERS:
+            return None
+        if not hmac.compare_digest(signature, _sign(username, expiry)):
+            return None
+        return username
+    except (ValueError, TypeError, UnicodeDecodeError, binascii.Error):
+        return None
 
 
 def require_auth(event: dict) -> dict | None:
