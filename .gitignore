@@ -25,3 +25,6 @@ SECURITY_FINDINGS.md
 
 # Local agent discussion; not part of the public repo
 agents-planning.md
+.agents/skills/
+.claude/skills/
+skills-lock.json
