@@ -16,6 +16,8 @@ The frontend JS calls the API on the same origin:
 The container connects to Scaleway Serverless SQL Database (PostgreSQL)
 ```
 
+Every response carries a strict CSP (scripts only from our own files), HSTS, `nosniff`, `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer` (`SECURITY_HEADERS` in `container/main.py`). Frontend pages must not use inline `<script>` blocks or `on…=` attributes; put code in `frontend/<page>.js` and use `addEventListener`.
+
 ## Project Structure
 
 ```

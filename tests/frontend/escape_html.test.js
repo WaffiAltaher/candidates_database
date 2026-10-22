@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'app.js'), 'utf8');
-const context = {};
+const context = { document: { querySelectorAll: () => [] } };
 vm.runInNewContext(source, context);
 const { escapeHtml } = context;
 
