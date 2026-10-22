@@ -72,3 +72,13 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+function wireLogout() {
+  document.querySelectorAll('.logout-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      clearToken();
+      window.location.href = '/login.html';
+    });
+  });
+}
+wireLogout();

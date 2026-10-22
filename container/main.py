@@ -44,6 +44,27 @@ app.add_middleware(
 )
 
 
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; object-src 'none'; base-uri 'none'; "
+        "form-action 'self'; frame-ancestors 'none'"
+    ),
+    "Strict-Transport-Security": "max-age=31536000",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
+
+
 def _json(status: int, body: dict) -> JSONResponse:
     return JSONResponse(status_code=status, content=body)
 
@@ -51,7 +72,8 @@ def _json(status: int, body: dict) -> JSONResponse:
 @app.exception_handler(Exception)
 async def unhandled_exception(request: Request, exc: Exception):
     logger.error("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
-    return _json(500, {"error": "Internal server error"})
+    # Runs outside the HTTP middleware, so the headers are set here too
+    return JSONResponse(status_code=500, content={"error": "Internal server error"}, headers=SECURITY_HEADERS)
 
 
 async def require_auth(request: Request):
