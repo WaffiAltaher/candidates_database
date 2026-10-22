@@ -1,0 +1,77 @@
+# Label-only queue that feeds issues to Claude one at a time.
+# A Claude Code scheduled task starts a session when claude:in-progress is
+# added to an issue. This workflow never calls Claude; it only moves labels.
+# Every trigger runs the dispatcher in the same job, because label events made
+# with GITHUB_TOKEN do not start other workflow runs. See docs/claude-queue.md.
+
+name: Claude queue
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [closed]
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
+jobs:
+  queue:
+    if: >-
+      (github.event_name == 'issues' && github.event.issue.user.login == 'WaffiAltaher') ||
+      (github.event_name == 'pull_request' &&
+        startsWith(github.event.pull_request.head.ref, 'claude/') &&
+        github.event.pull_request.head.repo.full_name == github.repository) ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # One group for everything that can dispatch, so two runs never pick an
+    # issue at the same time. queue: max keeps up to 100 waiting runs in FIFO
+    # order instead of replacing the one pending run.
+    concurrency:
+      group: claude-queue
+      cancel-in-progress: false
+      queue: max
+    steps:
+      # Always run the script from the default branch. For a PR closed without
+      # merging, the default ref is refs/pull/N/merge, which would run the
+      # PR's own copy of the script.
+      - name: Check out the queue script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Pick the queue mode
+        id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          case "$EVENT_NAME" in
+            issues) mode=intake ;;
+            pull_request) mode=pr-closed ;;
+            schedule) mode=stale ;;
+            *) mode=dispatch ;;
+          esac
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+      - name: Update labels and dispatch
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          QUEUE_MODE: ${{ steps.mode.outputs.mode }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+        with:
+          script: |
+            const run = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/claude-queue.js`);
+            await run({ github, context, core });
