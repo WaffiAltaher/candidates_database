@@ -12,10 +12,10 @@ import sys
 # Set defaults for local dev before any imports that read env vars
 os.environ.setdefault("DATABASE_PATH", "cvs.db")
 os.environ.setdefault("AUTH_SECRET", "local-dev-secret-not-used-in-production")
-# Default user: admin/admin (sha256 hash of "admin")
+# Default user: admin/admin (scrypt hash of "admin")
 os.environ.setdefault(
     "AUTH_USERS",
-    json.dumps({"admin": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"}),
+    json.dumps({"admin": "scrypt$16384$8$1$Y2FuZGlkYXRlcy1kZXYtMQ==$aYz/67aCRaL8SQxCWfYwt/nBlX7aSdAl8vE7H8hoQo8="}),
 )
 os.environ.setdefault("ALLOWED_ORIGIN", "*")
 

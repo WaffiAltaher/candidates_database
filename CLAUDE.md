@@ -88,7 +88,7 @@ poetry run pytest
 | `LLM_MODEL` | AISuite model string | No (default: anthropic:claude-sonnet-4-20250514) |
 | `LLM_MODEL_FAST` | AISuite model string for faster/cheaper SQL generation | No (default: anthropic:claude-haiku-4-5-20251001) |
 | `AUTH_SECRET` | HMAC signing secret for tokens | Yes |
-| `AUTH_USERS` | JSON map of username -> SHA-256(password) hash | Yes |
+| `AUTH_USERS` | JSON map of username -> scrypt password hash (see Managing Users) | Yes |
 | `ALLOWED_ORIGIN` | CORS allowed origin | Production |
 | `DB_POOL_MAX` | Max PostgreSQL connections per container instance (per URL) | No (default: 4) |
 | `LOG_LEVEL` | Logging level | No (default: INFO) |
@@ -120,7 +120,7 @@ Secrets are stored on that environment only. There are no repository-level Actio
 | `AWS_SECRET_ACCESS_KEY` | State bucket credentials |
 | `TF_VAR_anthropic_api_key` | Anthropic API key |
 | `TF_VAR_auth_secret` | HMAC signing secret |
-| `TF_VAR_auth_users` | Raw JSON map of username to SHA-256 password hash |
+| `TF_VAR_auth_users` | Raw JSON map of username to scrypt password hash |
 
 `terraform/production.auto.tfvars` is committed and holds only the frontend bucket name (`candidates.ittopia.nl`) and the CORS origin (`http://candidates.ittopia.nl`). Do not put secrets in that file.
 
@@ -182,13 +182,13 @@ HMAC-SHA256 signed tokens with 24h expiry. All endpoints except `/login` require
 
 ### Managing Users
 
-Users are a JSON map of `username -> SHA-256(password)` in the `TF_VAR_auth_users` secret on the GitHub environment `production`. The value is raw JSON, not an HCL string.
+Users are a JSON map of `username -> scrypt$<n>$<r>$<p>$<salt_b64>$<hash_b64>` (salted scrypt) in the `TF_VAR_auth_users` secret on the GitHub environment `production`. The value is raw JSON, not an HCL string.
 
 **To add a new user:**
 
-1. Generate the SHA-256 hash of the password:
+1. Generate the scrypt hash entry (prompts for the password and prints the entry):
 ```bash
-echo -n "the_password" | shasum -a 256 | awk '{print $1}'
+poetry run python scripts/add_user.py <username>
 ```
 
 2. Update the `TF_VAR_auth_users` environment secret with the full JSON object, including existing users. Run `gh` from this repository's directory so the personal GitHub account is selected:

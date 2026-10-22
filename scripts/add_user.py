@@ -2,14 +2,17 @@
 """Generate an AUTH_USERS JSON entry for a new user.
 
 Usage:
-    poetry run python add_user.py
-    poetry run python add_user.py alice
+    poetry run python scripts/add_user.py [username]
 """
 
 import getpass
-import hashlib
 import json
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from candidates.passwords import hash_password  # noqa: E402
 
 
 def main():
@@ -21,7 +24,7 @@ def main():
         print("Passwords do not match.")
         sys.exit(1)
 
-    hashed = hashlib.sha256(password.encode()).hexdigest()
+    hashed = hash_password(password)
     print(f"\nAdd this to your AUTH_USERS env var:\n")
     print(f'  "{username}": "{hashed}"')
     print(f"\nFull single-user example:")
