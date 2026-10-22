@@ -133,24 +133,3 @@ resource "scaleway_container_domain" "app" {
   container_id = scaleway_container.api.id
   hostname     = var.app_hostname
 }
-
-# -----------------------------------------------------
-# Object Storage — static frontend
-# -----------------------------------------------------
-resource "scaleway_object_bucket" "frontend" {
-  name          = var.frontend_bucket_name
-  force_destroy = true
-}
-
-
-resource "scaleway_object_bucket_website_configuration" "frontend" {
-  bucket = scaleway_object_bucket.frontend.name
-
-  index_document {
-    suffix = "index.html"
-  }
-
-  error_document {
-    key = "index.html"
-  }
-}

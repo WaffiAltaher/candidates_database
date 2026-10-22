@@ -3,6 +3,8 @@
 # any step runs. It does not build the container image and it does not
 # upload the plan file. Do not enable step debug or TF_LOG here: the plan
 # JSON contains live credentials.
+# A plan that deletes a resource fails, unless a manual run lists that
+# resource's exact address in the allow_deletes input.
 
 name: Deploy
 
@@ -11,6 +13,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      allow_deletes:
+        description: "Resource addresses this run may delete, separated by spaces. Leave empty to allow no deletes."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -66,20 +74,26 @@ jobs:
 
       - name: Reject deletes
         working-directory: terraform
+        env:
+          ALLOW_DELETES: ${{ inputs.allow_deletes }}
         run: |
           set -euo pipefail
-          terraform show -json tfplan | python3 -c 'import json, sys
+          terraform show -json tfplan | python3 -c 'import json, os, sys
+          allowed = set(os.environ.get("ALLOW_DELETES", "").split())
           plan = json.load(sys.stdin)
           deletes = []
           for change in plan.get("resource_changes") or []:
               actions = (change.get("change") or {}).get("actions") or []
               if "delete" in actions:
                   deletes.append((change.get("address", "?"), actions))
-          if deletes:
-              for address, actions in deletes:
-                  print(address + ": " + ",".join(actions))
+          blocked = [address for address, _ in deletes if address not in allowed]
+          for address, actions in deletes:
+              status = "blocked" if address in blocked else "allowed"
+              print(status + " " + address + ": " + ",".join(actions))
+          if blocked:
               raise SystemExit(1)
-          print("no deletes")'
+          if not deletes:
+              print("no deletes")'
 
       - name: Terraform apply
         working-directory: terraform
