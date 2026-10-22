@@ -90,6 +90,7 @@ poetry run pytest
 | `AUTH_SECRET` | HMAC signing secret for tokens | Yes |
 | `AUTH_USERS` | JSON map of username -> SHA-256(password) hash | Yes |
 | `ALLOWED_ORIGIN` | CORS allowed origin | Production |
+| `DB_POOL_MAX` | Max PostgreSQL connections per container instance (per URL) | No (default: 4) |
 | `LOG_LEVEL` | Logging level | No (default: INFO) |
 
 ### Deployment
@@ -170,6 +171,8 @@ s3cmd put frontend/*.html frontend/*.js s3://candidates.ittopia.nl/ --acl-public
 Dual backend support:
 - **SQLite** for local development (default)
 - **PostgreSQL** for production (Scaleway Serverless SQL)
+
+Each request gets its own connection (`open_db()` in `candidates/helpers.py`; a bounded pool for PostgreSQL, a short-lived connection for SQLite). Blocking route handlers are plain `def` so FastAPI runs them in a thread pool.
 
 All SQL uses parameterized queries. `execute_query()` restricts LLM-generated queries to SELECT only.
 
