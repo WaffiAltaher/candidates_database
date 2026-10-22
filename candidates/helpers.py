@@ -296,7 +296,7 @@ def dispatch(event: dict, context, routes: list) -> dict:
             except Exception as e:
                 total_ms = (time.time() - request_start) * 1000
                 logger.error("!!! %s %s -> 500 error: %s (%.1fms)", method, path, e, total_ms, exc_info=True)
-                return response(500, {"error": str(e)})
+                return response(500, {"error": "Internal server error"})
 
     logger.warning("No route matched: %s %s", method, path)
     return response(404, {"error": "Not found"})

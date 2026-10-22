@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from candidates.login_limiter import LoginLimiter
+from candidates.search_engine import SEARCH_FAILED_MESSAGE
 from candidates.helpers import (
     ALLOWED_ORIGIN,
     create_token,
@@ -43,6 +44,12 @@ app.add_middleware(
 
 def _json(status: int, body: dict) -> JSONResponse:
     return JSONResponse(status_code=status, content=body)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception(request: Request, exc: Exception):
+    logger.error("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
+    return _json(500, {"error": "Internal server error"})
 
 
 async def require_auth(request: Request):
@@ -204,11 +211,11 @@ def search(body: dict = Body(...), db=Depends(get_db), db_ro=Depends(get_db_read
     try:
         raw_results, truncated = db_ro.run_generated_query(sql)
     except ValueError as e:
-        logger.error("Search query rejected: %s", e)
-        return _json(200, {"sql": sql, "raw_results": [], "truncated": False, "summary": f"Error: Generated query was rejected - {e}"})
-    except Exception as e:
-        logger.error("Search SQL execution failed: %s", e)
-        return _json(200, {"sql": sql, "raw_results": [], "truncated": False, "summary": f"Error executing query: {e}"})
+        logger.warning("Search query rejected: %s", e, exc_info=True)
+        return _json(200, {"sql": sql, "raw_results": [], "truncated": False, "summary": SEARCH_FAILED_MESSAGE})
+    except Exception:
+        logger.error("Search SQL execution failed", exc_info=True)
+        return _json(200, {"sql": sql, "raw_results": [], "truncated": False, "summary": SEARCH_FAILED_MESSAGE})
     sql_exec_ms = (time.time() - t_exec) * 1000
     logger.info("Search SQL executed in %.1fms, %d rows, truncated=%s", sql_exec_ms, len(raw_results), truncated)
 
@@ -265,7 +272,7 @@ def upload(body: dict = Body(...), db=Depends(get_db)):
         return _json(200, resp)
     except Exception as e:
         logger.error("Upload failed: %s", e, exc_info=True)
-        return _json(500, {"error": f"Processing failed: {e}"})
+        return _json(500, {"error": "Processing failed. Check that the file is a readable PDF."})
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
