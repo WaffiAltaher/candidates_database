@@ -81,9 +81,9 @@
                     ).join('');
                     const extra = (c.technologies || []).length > 5
                         ? `<span class="tag">+${c.technologies.length - 5} more</span>` : '';
-                    const exp = c.years_experience ? `${c.years_experience} yrs` : '-';
+                    const exp = c.years_experience ? `${escapeHtml(c.years_experience)} yrs` : '-';
                     return `<tr>
-                        <td><a href="/candidate.html?id=${c.id}">${escapeHtml(c.name)}</a></td>
+                        <td><a href="/candidate.html?id=${encodeURIComponent(c.id)}">${escapeHtml(c.name)}</a></td>
                         <td>${escapeHtml(c.job_title) || '-'}</td>
                         <td>${escapeHtml(c.university) || '-'}</td>
                         <td>${exp}</td>
