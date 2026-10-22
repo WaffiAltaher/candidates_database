@@ -178,7 +178,7 @@ All SQL uses parameterized queries. `execute_query()` restricts LLM-generated qu
 
 ## Auth
 
-HMAC-SHA256 signed tokens with 24h expiry. All endpoints except `/login` require `Authorization: Bearer <token>` header.
+HMAC-SHA256 signed tokens with 24h expiry. All endpoints except `/login` require `Authorization: Bearer <token>` header. After 5 failed logins for a username within 15 minutes, `/login` returns 429 with `Retry-After` for that username. The count is kept in memory per container instance.
 
 ### Managing Users
 
