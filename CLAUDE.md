@@ -164,6 +164,7 @@ s3cmd put frontend/*.html frontend/*.js s3://candidates.ittopia.nl/ --acl-public
 - The container image is built from `container/Dockerfile` with the project root as build context
 - It copies the `candidates/` package (including `helpers.py`) into the image
 - The container listens on port 8080 (uvicorn). Scaleway proxies HTTPS to it
+- The container runs as the unprivileged user `app` (UID 10001); the app writes only to `/tmp`.
 - `min_scale=0`: the container scales to zero when idle, with a cold start on the next request
 - The app refuses to start if `AUTH_SECRET` is missing, shorter than 24 characters, or equal to `dev-secret-change-me`, or if `ALLOWED_ORIGIN` is empty
 - `terraform/terraform.tfvars` is for local experiments only. CI does not read it
