@@ -41,14 +41,7 @@ def main(argv: list[str] | None = None):
     db.initialize()
     db.close()
 
-    # Mount static frontend files on the FastAPI app
     from container.main import app
-    from fastapi.staticfiles import StaticFiles
-
-    frontend_dir = os.path.join(
-        os.path.dirname(__file__), "frontend"
-    )
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
     if args.host == "127.0.0.1":
         print(f"Dev server running at http://localhost:{args.port}")

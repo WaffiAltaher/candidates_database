@@ -1,5 +1,5 @@
-// API configuration — single container backend
-const API_BASE = 'https://candidatesdb25d8ab32-candidates-api.functions.fnc.nl-ams.scw.cloud';
+// API configuration — same origin as the page (served by the API container)
+const API_BASE = '';
 const API = {
   auth: API_BASE,
   candidates: API_BASE,
