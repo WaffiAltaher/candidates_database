@@ -28,6 +28,8 @@ function requireAuth() {
 }
 
 async function api(path, options = {}) {
+  const { redirectOn401 = true, ...fetchOptions } = options;
+  options = fetchOptions;
   const token = getToken();
   const headers = options.headers || {};
   if (token) {
@@ -38,7 +40,7 @@ async function api(path, options = {}) {
     options.body = JSON.stringify(options.body);
   }
   const resp = await fetch(path, { ...options, headers });
-  if (resp.status === 401) {
+  if (resp.status === 401 && redirectOn401) {
     clearToken();
     window.location.href = '/login.html';
     return null;

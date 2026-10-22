@@ -46,6 +46,7 @@
                 const data = await api(API.auth + '/login', {
                     method: 'POST',
                     body: { username, password },
+                    redirectOn401: false,
                 });
                 if (data && data.token) {
                     setToken(data.token);
