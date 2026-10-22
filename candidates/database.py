@@ -31,18 +31,36 @@ class Database:
         return "PostgreSQL" if self.backend == "postgresql" else "SQLite"
 
     def _execute(self, sql, params=None):
-        """Execute a query, handling cursor creation per backend."""
-        cursor = self.conn.cursor()
-        if params:
-            cursor.execute(sql, params)
-        else:
-            cursor.execute(sql)
+        """Execute a query, handling cursor creation per backend.
+
+        A failed statement rolls back so the connection stays usable (PostgreSQL
+        otherwise stays in an aborted transaction).
+        """
+        try:
+            cursor = self.conn.cursor()
+            if params:
+                cursor.execute(sql, params)
+            else:
+                cursor.execute(sql)
+        except Exception:
+            self._rollback_quietly()
+            raise
         return cursor
 
     def _executemany(self, sql, params_list):
-        cursor = self.conn.cursor()
-        cursor.executemany(sql, params_list)
+        try:
+            cursor = self.conn.cursor()
+            cursor.executemany(sql, params_list)
+        except Exception:
+            self._rollback_quietly()
+            raise
         return cursor
+
+    def _rollback_quietly(self):
+        try:
+            self.conn.rollback()
+        except Exception:
+            logger.warning("Rollback failed", exc_info=True)
 
     def initialize(self):
         """Create tables if they don't exist."""
@@ -298,7 +316,9 @@ class Database:
                    VALUES ({p}, {p}, {p}, {p}, {p}, {p}) RETURNING id""",
                 (candidate_id, interview_number, interviewer_name, comments, verdict, interview_date),
             )
-            return cursor.fetchone()[0]
+            interview_id = cursor.fetchone()[0]
+            self.conn.commit()
+            return interview_id
         else:
             cursor = self._execute(
                 f"""INSERT INTO interviews (candidate_id, interview_number, interviewer_name, comments, verdict, interview_date)
