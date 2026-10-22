@@ -41,3 +41,8 @@ variable "frontend_bucket_name" {
   type        = string
   default     = "candidates-db-frontend"
 }
+
+variable "app_hostname" {
+  description = "Public hostname bound to the API container (serves the frontend and the API)"
+  type        = string
+}

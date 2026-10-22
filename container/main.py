@@ -8,11 +8,13 @@ import logging
 import os
 import tempfile
 import time
+from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from candidates.login_limiter import LoginLimiter
 from candidates.search_engine import SEARCH_FAILED_MESSAGE
@@ -276,3 +278,15 @@ def upload(body: dict = Body(...), db=Depends(get_db)):
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+def _frontend_dir() -> Path:
+    here = Path(__file__).resolve().parent
+    for candidate in (here / "frontend", here.parent / "frontend"):
+        if candidate.is_dir():
+            return candidate
+    raise RuntimeError("frontend directory not found")
+
+
+# Must stay last so the API routes above match first
+app.mount("/", StaticFiles(directory=_frontend_dir(), html=True), name="frontend")

@@ -14,3 +14,7 @@ output "database_endpoint" {
   value     = scaleway_sdb_sql_database.main.endpoint
   sensitive = true
 }
+
+output "app_url" {
+  value = "https://${var.app_hostname}"
+}

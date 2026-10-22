@@ -126,6 +126,14 @@ resource "scaleway_container" "api" {
   }
 }
 
+# Custom domain with an automatic Let's Encrypt certificate. The CNAME for
+# app_hostname must already point at the container's domain_name when this
+# is created, or the certificate challenge fails (see docs/adr/0001).
+resource "scaleway_container_domain" "app" {
+  container_id = scaleway_container.api.id
+  hostname     = var.app_hostname
+}
+
 # -----------------------------------------------------
 # Object Storage — static frontend
 # -----------------------------------------------------

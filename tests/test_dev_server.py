@@ -20,9 +20,6 @@ def mock_run(monkeypatch, tmp_path):
     monkeypatch.delenv("ALLOWED_ORIGIN", raising=False)
     run = MagicMock()
     monkeypatch.setattr("uvicorn.run", run)
-    import container.main as m
-
-    monkeypatch.setattr(m.app, "mount", MagicMock())
     return run
 
 

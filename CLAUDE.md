@@ -2,13 +2,13 @@
 
 ## Project Overview
 
-Candidates Database - A CV management and search system deployed as a Scaleway Serverless Container (FastAPI) with a static JS frontend and PostgreSQL database.
+Candidates Database - A CV management and search system deployed as a Scaleway Serverless Container (FastAPI) with a static JS frontend (also served by the container) and PostgreSQL database.
 
 ## Architecture
 
 ```
-candidates.ittopia.nl (object storage website) serves the static frontend
-Frontend JS calls a single Scaleway Serverless Container:
+candidates.ittopia.nl (Scaleway custom domain, HTTPS) points at the Serverless Container, which serves the static frontend and the API on the same origin
+The frontend JS calls the API on the same origin:
   - POST /login         (authentication)
   - GET/POST/PUT/DELETE  (candidates, interviews, verdicts, customers)
   - POST /search        (AI-powered natural language search)
@@ -124,7 +124,7 @@ Secrets are stored on that environment only. There are no repository-level Actio
 | `TF_VAR_auth_secret` | HMAC signing secret |
 | `TF_VAR_auth_users` | Raw JSON map of username to scrypt password hash |
 
-`terraform/production.auto.tfvars` is committed and holds only the frontend bucket name (`candidates.ittopia.nl`) and the CORS origin (`http://candidates.ittopia.nl`). Do not put secrets in that file.
+`terraform/production.auto.tfvars` is committed and holds the frontend bucket name (`candidates.ittopia.nl`), the app hostname and the CORS origin `https://candidates.ittopia.nl`. Do not put secrets in that file.
 
 #### Local Terraform
 
@@ -151,16 +151,15 @@ Pushing an image does not restart the running container. The next approved GitHu
 
 #### Frontend files
 
-```bash
-s3cmd put frontend/*.html frontend/*.js s3://candidates.ittopia.nl/ --acl-public
-```
+The frontend is part of the container image (`COPY frontend/` in `container/Dockerfile`). To ship a frontend change, build and push the image (`bash terraform/build_container.sh`) and redeploy the container.
 
 **What Terraform manages:**
 - Scaleway Serverless SQL Database (PostgreSQL)
 - IAM application + API keys for DB access (read-write and read-only)
 - Container Registry namespace (`rg.nl-ams.scw.cloud/candidates-db`)
 - Container namespace + 1 serverless container (all API routes)
-- Object Storage bucket for frontend hosting
+- Object Storage bucket for frontend hosting (unused, kept until cleanup)
+- Custom domain `candidates.ittopia.nl` on the container
 
 **Notes:**
 - The container image is built from `container/Dockerfile` with the project root as build context
@@ -170,6 +169,8 @@ s3cmd put frontend/*.html frontend/*.js s3://candidates.ittopia.nl/ --acl-public
 - `min_scale=0`: the container scales to zero when idle, with a cold start on the next request
 - The app refuses to start if `AUTH_SECRET` is missing, shorter than 24 characters, or equal to `dev-secret-change-me`, or if `ALLOWED_ORIGIN` is empty
 - `terraform/terraform.tfvars` is for local experiments only. CI does not read it
+- `candidates.ittopia.nl` is a `scaleway_container_domain`. Its DNS CNAME (Route 53) must point at the container's default domain (`terraform output container_url`) before the domain resource is created. See `docs/adr/0001-serve-frontend-from-container.md`.
+- The `candidates.ittopia.nl` object storage bucket is no longer used to serve the site. It stays in Terraform until a separate cleanup.
 
 ## Database
 
