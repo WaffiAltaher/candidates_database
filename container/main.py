@@ -49,8 +49,11 @@ async def require_auth(request: Request):
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-    if not validate_token(auth[7:]):
+    username = validate_token(auth[7:])
+    if username is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    request.state.username = username
+    logger.info("%s %s user=%s", request.method, request.url.path, username)
 
 
 def get_db():
@@ -94,7 +97,7 @@ async def login(request: Request):
         return _json(401, {"error": "Invalid username or password"})
     login_limiter.reset(username)
     logger.info("Login successful for user=%s", username)
-    return _json(200, {"token": create_token()})
+    return _json(200, {"token": create_token(username)})
 
 
 # -- Candidates --

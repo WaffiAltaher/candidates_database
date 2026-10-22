@@ -178,7 +178,7 @@ All SQL uses parameterized queries. `execute_query()` restricts LLM-generated qu
 
 ## Auth
 
-HMAC-SHA256 signed tokens with 24h expiry. All endpoints except `/login` require `Authorization: Bearer <token>` header. After 5 failed logins for a username within 15 minutes, `/login` returns 429 with `Retry-After` for that username. The count is kept in memory per container instance.
+Tokens are HMAC-SHA256 signed, carry the username, and expire after 24 hours. A token stops working when its user is removed from `AUTH_USERS` or the user's password changes. All endpoints except `/login` require `Authorization: Bearer <token>` header. After 5 failed logins for a username within 15 minutes, `/login` returns 429 with `Retry-After` for that username. The count is kept in memory per container instance.
 
 ### Managing Users
 
@@ -199,4 +199,4 @@ printf '%s' '{"existing_user":"<existing_hash>","new_user":"<new_hash>"}' \
 
 3. Run the deploy workflow and approve it. No image rebuild is required. The workflow updates the container environment variable.
 
-**To remove a user:** Set the secret to the JSON object without that user, then run and approve the workflow again.
+**To remove a user:** Set the secret to the JSON object without that user, then run and approve the workflow again. Their open sessions end once the deploy finishes.
