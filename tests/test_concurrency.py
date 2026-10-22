@@ -2,7 +2,7 @@ import json
 import os
 import threading
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -71,3 +71,41 @@ def test_each_request_gets_its_own_connection(tmp_path, monkeypatch):
     monkeypatch.setattr(helpers, "_schema_ready", False)
     with helpers.open_db() as a, helpers.open_db() as b:
         assert a.conn is not b.conn
+
+
+def _pg_pool_with(conns):
+    pool = helpers._PgPool.__new__(helpers._PgPool)
+    pool._pool = MagicMock()
+    pool._pool.getconn.side_effect = conns
+    pool._slots = threading.BoundedSemaphore(1)
+    return pool
+
+
+def _conn(ping_error=None):
+    conn = MagicMock()
+    conn.closed = 0
+    if ping_error:
+        conn.cursor.return_value.execute.side_effect = ping_error
+    return conn
+
+
+def test_stale_pooled_connection_is_replaced():
+    dead, live = _conn(RuntimeError("server closed the connection")), _conn()
+    pool = _pg_pool_with([dead, live])
+
+    assert pool.acquire() is live
+    pool._pool.putconn.assert_called_once_with(dead, close=True)
+    live.rollback.assert_called_once()
+
+    pool.release(live)
+    # slot accounting intact: can acquire again without blocking
+    assert pool._slots.acquire(blocking=False)
+
+
+def test_acquire_raises_after_two_dead_connections_and_frees_slot():
+    pool = _pg_pool_with([_conn(RuntimeError("a")), _conn(RuntimeError("b"))])
+
+    with pytest.raises(RuntimeError):
+        pool.acquire()
+    assert pool._pool.putconn.call_count == 2
+    assert pool._slots.acquire(blocking=False)

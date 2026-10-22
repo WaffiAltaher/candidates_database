@@ -131,14 +131,33 @@ class _PgPool:
         if not self._slots.acquire(timeout=DB_POOL_WAIT_SECONDS):
             raise RuntimeError("Timed out waiting for a database connection")
         try:
-            conn = self._pool.getconn()
-            if conn.closed:
-                self._pool.putconn(conn, close=True)
-                conn = self._pool.getconn()
-            return conn
+            return self._get_live_connection()
         except Exception:
             self._slots.release()
             raise
+
+    def _get_live_connection(self):
+        """Borrow a connection and ping it; replace a dead one once, then raise.
+
+        Serverless SQL drops idle connections server-side, which `conn.closed`
+        does not reveal until a query fails.
+        """
+        last_error = None
+        for _ in range(2):
+            conn = self._pool.getconn()
+            try:
+                if conn.closed:
+                    raise RuntimeError("connection is closed")
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1")
+                cursor.close()
+                conn.rollback()
+                return conn
+            except Exception as e:
+                last_error = e
+                logger.warning("Discarding dead pooled connection: %s", e)
+                self._pool.putconn(conn, close=True)
+        raise last_error
 
     def release(self, conn):
         try:
