@@ -60,7 +60,27 @@ is therefore not dropped.
 
 As a safety net, for example if a run fails, every run also checks each
 in-progress issue: if all its linked PRs from this attempt are closed, it is
-marked `claude:done` (any merged) or `claude:failed`.
+marked `claude:done` (any merged) or `claude:failed`. An issue is never
+finished twice: the script first re-reads the issue and skips it if
+`claude:in-progress` is already gone.
+
+### Label list lag
+
+GitHub's label-filtered issue list lags a few seconds behind label writes.
+The script handles that in two ways:
+
+- **It confirms before acting.** The list is only used to find candidates.
+  Before the script dispatches, reconciles or fails an issue, it reads that
+  issue directly (`issues.get`) and applies the label changes this run has
+  already made. An issue the run has just queued therefore counts as queued,
+  and an issue it has just finished no longer counts as in progress.
+- **It waits for its own writes.** After each label change, the run waits
+  until the list shows it. It polls with a short backoff for up to about 90
+  seconds, then logs a warning and continues. Runs are serialized, so the
+  next run sees a list that is up to date.
+
+A run therefore usually takes a few seconds longer than the label changes
+themselves.
 
 The queue script is always checked out from the default branch, so a PR
 cannot change how its own close event is handled. Only PRs from branches in
@@ -109,3 +129,12 @@ same rule: it always removes `claude:in-progress` before adding
 
 Remove `claude:in-progress`, add `claude:failed`, then run the workflow by
 hand to start the next issue.
+
+## Tests
+
+The script's tests use a mocked GitHub API, including a label list that lags
+behind writes. Run them with Node 20 or later:
+
+```bash
+node --test .github/scripts/claude-queue.test.js
+```
