@@ -109,14 +109,6 @@ class CVExtractor:
 
     def _store_candidate(self, data: dict) -> tuple[int, bool]:
         """Upsert candidate and related records into database. Returns (candidate_id, was_replaced)."""
-        candidate_id, was_replaced = self.database.upsert_candidate(data)
-
-        technologies = data.get("technologies", [])
-        if technologies:
-            self.database.add_technologies(candidate_id, technologies)
-
-        experiences = data.get("experiences", [])
-        if experiences:
-            self.database.add_experiences(candidate_id, experiences)
+        candidate_id, was_replaced = self.database.store_candidate(data)
 
         return candidate_id, was_replaced

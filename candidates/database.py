@@ -146,61 +146,84 @@ class Database:
             """)
             self.conn.commit()
 
-    def upsert_candidate(self, data: dict) -> tuple[int, bool]:
-        """Insert or update a candidate. Returns (candidate_id, was_replaced)."""
+    def upsert_candidate(self, data: dict, commit: bool = True) -> tuple[int, bool]:
+        """Insert or update a candidate. Returns (candidate_id, was_replaced).
+
+        An existing candidate (matched by case-insensitive name) is updated in place so
+        its id, final verdict, interviews and proposed customers are kept.
+        """
         p = self.placeholder
 
         existing = self.execute_query(
             f"SELECT id FROM candidates WHERE LOWER(name) = LOWER({p})", (data["name"],)
         )
         was_replaced = len(existing) > 0
-
-        self._execute(
-            f"DELETE FROM candidates WHERE LOWER(name) = LOWER({p})", (data["name"],)
+        cv_fields = (
+            data.get("date_of_birth"),
+            data.get("university"),
+            data.get("degree_field"),
+            data.get("job_title"),
+            data.get("years_experience"),
         )
 
-        if self.backend == "postgresql":
-            cursor = self._execute(
-                f"""INSERT INTO candidates (name, date_of_birth, university, degree_field, job_title, years_experience)
-                   VALUES ({p}, {p}, {p}, {p}, {p}, {p}) RETURNING id""",
-                (
-                    data["name"],
-                    data.get("date_of_birth"),
-                    data.get("university"),
-                    data.get("degree_field"),
-                    data.get("job_title"),
-                    data.get("years_experience"),
-                ),
+        if was_replaced:
+            candidate_id = existing[0]["id"]
+            self._execute(
+                f"""UPDATE candidates SET date_of_birth = {p}, university = {p},
+                   degree_field = {p}, job_title = {p}, years_experience = {p}
+                   WHERE id = {p}""",
+                (*cv_fields, candidate_id),
             )
-            candidate_id = cursor.fetchone()[0]
+            self._execute(
+                f"DELETE FROM technologies WHERE candidate_id = {p}", (candidate_id,)
+            )
+            self._execute(
+                f"DELETE FROM experiences WHERE candidate_id = {p}", (candidate_id,)
+            )
         else:
-            cursor = self._execute(
-                f"""INSERT INTO candidates (name, date_of_birth, university, degree_field, job_title, years_experience)
-                   VALUES ({p}, {p}, {p}, {p}, {p}, {p})""",
-                (
-                    data["name"],
-                    data.get("date_of_birth"),
-                    data.get("university"),
-                    data.get("degree_field"),
-                    data.get("job_title"),
-                    data.get("years_experience"),
-                ),
-            )
-            candidate_id = cursor.lastrowid
+            insert = f"""INSERT INTO candidates (name, date_of_birth, university, degree_field, job_title, years_experience)
+                   VALUES ({p}, {p}, {p}, {p}, {p}, {p})"""
+            if self.backend == "postgresql":
+                cursor = self._execute(insert + " RETURNING id", (data["name"], *cv_fields))
+                candidate_id = cursor.fetchone()[0]
+            else:
+                cursor = self._execute(insert, (data["name"], *cv_fields))
+                candidate_id = cursor.lastrowid
 
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return candidate_id, was_replaced
 
-    def add_technologies(self, candidate_id: int, technologies: list[str]):
+    def store_candidate(self, data: dict) -> tuple[int, bool]:
+        """Store a candidate with technologies and experiences in one transaction.
+
+        On any error nothing is changed. Returns (candidate_id, was_replaced).
+        """
+        try:
+            candidate_id, was_replaced = self.upsert_candidate(data, commit=False)
+            technologies = data.get("technologies") or []
+            if technologies:
+                self.add_technologies(candidate_id, technologies, commit=False)
+            experiences = data.get("experiences") or []
+            if experiences:
+                self.add_experiences(candidate_id, experiences, commit=False)
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        return candidate_id, was_replaced
+
+    def add_technologies(self, candidate_id: int, technologies: list[str], commit: bool = True):
         """Bulk insert technologies for a candidate."""
         p = self.placeholder
         self._executemany(
             f"INSERT INTO technologies (candidate_id, technology_name) VALUES ({p}, {p})",
             [(candidate_id, tech) for tech in technologies],
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
-    def add_experiences(self, candidate_id: int, experiences: list[dict]):
+    def add_experiences(self, candidate_id: int, experiences: list[dict], commit: bool = True):
         """Bulk insert work experiences for a candidate."""
         p = self.placeholder
         self._executemany(
@@ -218,7 +241,8 @@ class Database:
                 for exp in experiences
             ],
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
     def get_all_candidates(self) -> list[dict]:
         """Return all candidates with their technologies."""
