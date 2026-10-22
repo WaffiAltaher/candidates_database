@@ -174,7 +174,7 @@ Dual backend support:
 
 Each request gets its own connection (`open_db()` in `candidates/helpers.py`; a bounded pool for PostgreSQL, a short-lived connection for SQLite). Blocking route handlers are plain `def` so FastAPI runs them in a thread pool.
 
-All SQL uses parameterized queries. `execute_query()` restricts LLM-generated queries to SELECT only.
+All SQL uses parameterized queries. AI search SQL runs through `Database.run_generated_query()`. It must start with SELECT or WITH and contain no write keywords. It runs in a read-only transaction (PostgreSQL) or on a read-only connection (SQLite), stops after 10 seconds, and returns at most 200 rows.
 
 ## Auth
 

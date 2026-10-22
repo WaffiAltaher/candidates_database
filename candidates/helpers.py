@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import threading
 import time
 from contextlib import contextmanager
@@ -228,6 +229,15 @@ def open_db(readonly: bool = False):
             yield database
         finally:
             pool.release(conn)
+    elif readonly:
+        path = os.environ.get("DATABASE_PATH", "cvs.db")
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA query_only = ON")
+            yield Database.from_connection(conn, "sqlite")
+        finally:
+            conn.close()
     else:
         database = Database(db_path=os.environ.get("DATABASE_PATH", "cvs.db"))
         try:

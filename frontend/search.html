@@ -93,7 +93,7 @@
                     const keys = Object.keys(rows[0]);
                     const hasId = keys.includes('id');
                     const nameKey = keys.find(k => k === 'name' || k === 'candidate_name' || k === 'full_name');
-                    html += `<div class="card"><h2>Raw Results</h2><table>
+                    html += `<div class="card"><h2>Raw Results</h2>${data.truncated ? '<p>Showing the first 200 rows.</p>' : ''}<table>
                         <thead><tr>${keys.map(k => `<th>${escapeHtml(k)}</th>`).join('')}</tr></thead>
                         <tbody>${rows.map(row =>
                             `<tr>${keys.map(k => {
