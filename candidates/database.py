@@ -5,9 +5,39 @@ Database layer with dual SQLite/PostgreSQL support for storing structured CV dat
 import datetime
 import decimal
 import logging
+import re
 import sqlite3
+import time
 
 logger = logging.getLogger(__name__)
+
+SEARCH_TIMEOUT_SECONDS = 10
+SEARCH_MAX_ROWS = 200
+
+_FORBIDDEN_KEYWORDS = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE",
+                       "TRUNCATE", "GRANT", "REVOKE", "COPY", "INTO OUTFILE",
+                       "INTO DUMPFILE", "LOAD_FILE", "EXEC", "EXECUTE", "CALL"]
+
+
+def check_generated_sql(sql: str) -> None:
+    """Raise ValueError unless sql is a single SELECT/WITH statement without write keywords."""
+    stripped = sql.strip().upper()
+    if not re.match(r"(SELECT|WITH)\b", stripped):
+        raise ValueError("Only SELECT queries are allowed")
+    # Remove string literals before checking to avoid false positives
+    sql_no_strings = re.sub(r"'[^']*'", "''", stripped)
+    for keyword in _FORBIDDEN_KEYWORDS:
+        if keyword == "INTO OUTFILE":
+            pattern = r"\bINTO\s+OUTFILE\b"
+        elif keyword == "INTO DUMPFILE":
+            pattern = r"\bINTO\s+DUMPFILE\b"
+        else:
+            pattern = rf"\b{keyword}\b"
+        if re.search(pattern, sql_no_strings):
+            raise ValueError(f"Forbidden keyword in query: {keyword}")
+    # Block multiple statements (semicolon followed by more SQL)
+    if ";" in sql_no_strings.rstrip(";").rstrip():
+        raise ValueError("Multiple statements are not allowed")
 
 
 def to_json_safe(value):
@@ -433,22 +463,7 @@ class Database:
         only safe SELECT statements are allowed.
         """
         if params is None:
-            stripped = sql.strip().upper()
-            if not stripped.startswith("SELECT"):
-                raise ValueError("Only SELECT queries are allowed")
-            # Block dangerous keywords that could appear after SELECT
-            dangerous = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE",
-                         "TRUNCATE", "GRANT", "REVOKE", "COPY", "INTO OUTFILE",
-                         "INTO DUMPFILE", "LOAD_FILE", "EXEC", "EXECUTE", "CALL"]
-            # Remove string literals before checking to avoid false positives
-            import re
-            sql_no_strings = re.sub(r"'[^']*'", "''", stripped)
-            for keyword in dangerous:
-                if keyword in sql_no_strings:
-                    raise ValueError(f"Forbidden keyword in query: {keyword}")
-            # Block multiple statements (semicolon followed by more SQL)
-            if ";" in sql_no_strings.rstrip(";").rstrip():
-                raise ValueError("Multiple statements are not allowed")
+            check_generated_sql(sql)
 
         cursor = self._execute(sql, params)
         if cursor.description is None:
@@ -458,6 +473,40 @@ class Database:
             {col: to_json_safe(val) for col, val in zip(columns, row)}
             for row in cursor.fetchall()
         ]
+
+    def run_generated_query(self, sql: str) -> tuple[list[dict], bool]:
+        """Run model-generated SQL read-only. Returns (rows, truncated)."""
+        check_generated_sql(sql)
+        max_rows = SEARCH_MAX_ROWS
+        if self.backend == "postgresql":
+            try:
+                cursor = self.conn.cursor()
+                cursor.execute("SET TRANSACTION READ ONLY")
+                cursor.execute(f"SET LOCAL statement_timeout = '{SEARCH_TIMEOUT_SECONDS}s'")
+                cursor.execute(sql)
+                fetched = cursor.fetchmany(max_rows + 1)
+            finally:
+                self.conn.rollback()
+        else:
+            deadline = time.monotonic() + SEARCH_TIMEOUT_SECONDS
+            self.conn.set_progress_handler(
+                lambda: 1 if time.monotonic() > deadline else 0, 1000
+            )
+            try:
+                cursor = self.conn.cursor()
+                cursor.execute(sql)
+                fetched = cursor.fetchmany(max_rows + 1)
+            finally:
+                self.conn.set_progress_handler(None, 0)
+        if cursor.description is None:
+            return [], False
+        columns = [desc[0] for desc in cursor.description]
+        rows = [
+            {col: to_json_safe(val) for col, val in zip(columns, row)}
+            for row in fetched
+        ]
+        truncated = len(rows) > max_rows
+        return rows[:max_rows], truncated
 
     def get_schema_description(self) -> str:
         """Return a human-readable schema description for LLM prompt construction."""

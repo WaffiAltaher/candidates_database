@@ -50,11 +50,12 @@ class SearchEngine:
         logger.info(f"Generated SQL: {sql}")
 
         try:
-            raw_results = self.database.execute_query(sql)
+            raw_results, truncated = self.database.run_generated_query(sql)
         except ValueError as e:
             return {
                 "sql": sql,
                 "raw_results": [],
+                "truncated": False,
                 "summary": f"Error: Generated query was rejected - {e}",
             }
         except Exception as e:
@@ -62,6 +63,7 @@ class SearchEngine:
             return {
                 "sql": sql,
                 "raw_results": [],
+                "truncated": False,
                 "summary": f"Error executing query: {e}",
             }
 
@@ -70,6 +72,7 @@ class SearchEngine:
         return {
             "sql": sql,
             "raw_results": raw_results,
+            "truncated": truncated,
             "summary": summary,
         }
 

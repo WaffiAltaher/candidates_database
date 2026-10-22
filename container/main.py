@@ -202,15 +202,15 @@ def search(body: dict = Body(...), db=Depends(get_db), db_ro=Depends(get_db_read
 
     t_exec = time.time()
     try:
-        raw_results = db_ro.execute_query(sql)
+        raw_results, truncated = db_ro.run_generated_query(sql)
     except ValueError as e:
         logger.error("Search query rejected: %s", e)
-        return _json(200, {"sql": sql, "raw_results": [], "summary": f"Error: Generated query was rejected - {e}"})
+        return _json(200, {"sql": sql, "raw_results": [], "truncated": False, "summary": f"Error: Generated query was rejected - {e}"})
     except Exception as e:
         logger.error("Search SQL execution failed: %s", e)
-        return _json(200, {"sql": sql, "raw_results": [], "summary": f"Error executing query: {e}"})
+        return _json(200, {"sql": sql, "raw_results": [], "truncated": False, "summary": f"Error executing query: {e}"})
     sql_exec_ms = (time.time() - t_exec) * 1000
-    logger.info("Search SQL executed in %.1fms, %d rows", sql_exec_ms, len(raw_results))
+    logger.info("Search SQL executed in %.1fms, %d rows, truncated=%s", sql_exec_ms, len(raw_results), truncated)
 
     t_summary = time.time()
     summary = engine._summarize_results(query, sql, raw_results)
@@ -218,7 +218,7 @@ def search(body: dict = Body(...), db=Depends(get_db), db_ro=Depends(get_db_read
     total_ms = (time.time() - t_start) * 1000
     logger.info("Search summarized in %.1fms, total=%.1fms", summary_ms, total_ms)
 
-    return _json(200, {"sql": sql, "raw_results": raw_results, "summary": summary})
+    return _json(200, {"sql": sql, "raw_results": raw_results, "truncated": truncated, "summary": summary})
 
 
 # -- Upload --
