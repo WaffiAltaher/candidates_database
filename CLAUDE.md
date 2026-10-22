@@ -67,6 +67,8 @@ poetry install
 
 # Run local dev server (uses SQLite, no PostgreSQL needed)
 poetry run python dev_server.py
+# Listens on 127.0.0.1 only. Other port: poetry run python dev_server.py 8091
+# To allow other machines on your network: poetry run python dev_server.py --host 0.0.0.0
 
 # Default login password: admin
 # Server runs at http://localhost:8080
