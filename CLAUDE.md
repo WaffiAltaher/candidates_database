@@ -137,7 +137,9 @@ terraform init -reconfigure
 terraform plan
 ```
 
-State is in the private bucket `terraform-bucket` (`candidates_database/terraform.tfstate` on `https://s3.nl-ams.scw.cloud`). Do not commit state files or plan files. `backend.tf` does not name a credentials profile. Locally, `AWS_PROFILE=scaleway` points at `~/.aws/credentials`. In GitHub Actions the same keys are the `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` secrets.
+`terraform init -reconfigure` is needed after any change to `backend.tf` (for example the `encrypt` setting). CI starts from a clean checkout and needs nothing extra.
+
+State is in the private bucket `terraform-bucket` (`candidates_database/terraform.tfstate` on `https://s3.nl-ams.scw.cloud`). Do not commit state files or plan files. `backend.tf` does not name a credentials profile. Locally, `AWS_PROFILE=scaleway` points at `~/.aws/credentials`. In GitHub Actions the same keys are the `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` secrets. The state object is encrypted at rest (Scaleway SSE-ONE).
 
 Scaleway provider credentials for a local plan come from `~/.config/scw/config.yaml`, or from `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and `SCW_DEFAULT_PROJECT_ID`.
 
