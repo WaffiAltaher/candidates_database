@@ -43,6 +43,15 @@ class Database:
             self.conn.row_factory = sqlite3.Row
             self.conn.execute("PRAGMA foreign_keys = ON")
 
+    @classmethod
+    def from_connection(cls, conn, backend: str) -> "Database":
+        """Wrap an already-open connection (e.g. one borrowed from a pool)."""
+        database = cls.__new__(cls)
+        database.backend = backend
+        database.placeholder = "%s" if backend == "postgresql" else "?"
+        database.conn = conn
+        return database
+
     @property
     def dialect(self) -> str:
         return "PostgreSQL" if self.backend == "postgresql" else "SQLite"

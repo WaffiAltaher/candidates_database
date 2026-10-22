@@ -8,7 +8,9 @@ import json
 import logging
 import os
 import re
+import threading
 import time
+from contextlib import contextmanager
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("helpers")
@@ -100,61 +102,105 @@ def verify_password(username: str, password: str) -> bool:
     return hmac.compare_digest(hashed, expected_hash)
 
 
-# --- DB singleton ---
+# --- Per-request DB connections ---
+#
+# Every request gets its own connection so no connection or cursor is shared
+# between threads. PostgreSQL connections come from a small bounded pool
+# (serverless SQL is billed on use and the container can run several
+# instances); SQLite opens a short-lived connection per request.
 
-_db_instance = None
-_db_readonly_instance = None
+DB_POOL_MAX = int(os.environ.get("DB_POOL_MAX", "4"))
+DB_POOL_WAIT_SECONDS = 30
 
-
-def get_db():
-    """Get or create the database singleton. Reconnects if connection is dead."""
-    global _db_instance
-    database_url = os.environ.get("DATABASE_URL")
-
-    if _db_instance is None:
-        t0 = time.time()
-        from candidates.database import Database
-        if database_url:
-            _db_instance = Database(database_url=database_url)
-        else:
-            _db_instance = Database(db_path=os.environ.get("DATABASE_PATH", "cvs.db"))
-        _db_instance.initialize()
-        logger.info("DB initialized (cold start) in %.1fms", (time.time() - t0) * 1000)
-    elif database_url and not _db_instance.is_connected():
-        t0 = time.time()
-        _db_instance.reconnect(database_url)
-        logger.info("DB reconnected in %.1fms", (time.time() - t0) * 1000)
-    else:
-        logger.debug("DB reusing existing connection")
-
-    return _db_instance
+_pools: dict = {}
+_pools_lock = threading.Lock()
+_schema_ready = False
+_schema_lock = threading.Lock()
 
 
-def get_db_readonly():
-    """Get or create a read-only database connection for LLM-generated queries.
+class _PgPool:
+    """ThreadedConnectionPool that makes callers wait instead of failing when full."""
 
-    Falls back to the regular connection in local dev (SQLite).
+    def __init__(self, database_url: str, maxconn: int):
+        from psycopg2.pool import ThreadedConnectionPool
+
+        self._pool = ThreadedConnectionPool(0, maxconn, database_url)
+        self._slots = threading.BoundedSemaphore(maxconn)
+
+    def acquire(self):
+        if not self._slots.acquire(timeout=DB_POOL_WAIT_SECONDS):
+            raise RuntimeError("Timed out waiting for a database connection")
+        try:
+            conn = self._pool.getconn()
+            if conn.closed:
+                self._pool.putconn(conn, close=True)
+                conn = self._pool.getconn()
+            return conn
+        except Exception:
+            self._slots.release()
+            raise
+
+    def release(self, conn):
+        try:
+            try:
+                conn.rollback()
+            except Exception:
+                logger.warning("Rollback on release failed; discarding connection", exc_info=True)
+                self._pool.putconn(conn, close=True)
+            else:
+                self._pool.putconn(conn)
+        finally:
+            self._slots.release()
+
+
+def _get_pool(database_url: str) -> _PgPool:
+    with _pools_lock:
+        pool = _pools.get(database_url)
+        if pool is None:
+            pool = _pools[database_url] = _PgPool(database_url, DB_POOL_MAX)
+        return pool
+
+
+def _ensure_schema(database) -> None:
+    global _schema_ready
+    if _schema_ready:
+        return
+    with _schema_lock:
+        if not _schema_ready:
+            database.initialize()
+            _schema_ready = True
+
+
+@contextmanager
+def open_db(readonly: bool = False):
+    """Yield a Database bound to its own connection for the duration of the block.
+
+    readonly=True uses DATABASE_URL_READONLY when set (for LLM-generated SQL),
+    otherwise falls back to the regular connection settings.
     """
-    global _db_readonly_instance
-    database_url_ro = os.environ.get("DATABASE_URL_READONLY")
+    from candidates.database import Database
 
-    if not database_url_ro:
-        # Local dev / no read-only URL configured — fall back to regular DB
-        return get_db()
+    database_url = os.environ.get("DATABASE_URL")
+    url = (os.environ.get("DATABASE_URL_READONLY") if readonly else None) or database_url
 
-    if _db_readonly_instance is None:
-        t0 = time.time()
-        from candidates.database import Database
-        _db_readonly_instance = Database(database_url=database_url_ro)
-        logger.info("DB read-only initialized (cold start) in %.1fms", (time.time() - t0) * 1000)
-    elif not _db_readonly_instance.is_connected():
-        t0 = time.time()
-        _db_readonly_instance.reconnect(database_url_ro)
-        logger.info("DB read-only reconnected in %.1fms", (time.time() - t0) * 1000)
+    if url:
+        pool = _get_pool(url)
+        conn = pool.acquire()
+        try:
+            conn.autocommit = False
+            database = Database.from_connection(conn, "postgresql")
+            if url == database_url:
+                _ensure_schema(database)
+            yield database
+        finally:
+            pool.release(conn)
     else:
-        logger.debug("DB read-only reusing existing connection")
-
-    return _db_readonly_instance
+        database = Database(db_path=os.environ.get("DATABASE_PATH", "cvs.db"))
+        try:
+            _ensure_schema(database)
+            yield database
+        finally:
+            database.close()
 
 
 # --- Route dispatcher ---

@@ -9,15 +9,14 @@ import os
 import tempfile
 import time
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from candidates.helpers import (
     ALLOWED_ORIGIN,
     create_token,
-    get_db,
-    get_db_readonly,
+    open_db,
     validate_token,
     verify_password,
 )
@@ -50,6 +49,21 @@ async def require_auth(request: Request):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
+def get_db():
+    """Per-request read-write connection (runs in the thread pool)."""
+    with open_db() as db:
+        yield db
+
+
+def get_db_readonly():
+    """Per-request read-only connection for LLM-generated SQL."""
+    with open_db(readonly=True) as db:
+        yield db
+
+
+# Handlers that touch the database or call the LLM are plain `def`, so FastAPI
+# runs them in a thread pool instead of blocking the event loop.
+
 # -- Auth --
 
 
@@ -79,15 +93,13 @@ async def login(request: Request):
 
 
 @app.get("/candidates", dependencies=[Depends(require_auth)])
-async def list_candidates():
-    db = get_db()
+def list_candidates(db=Depends(get_db)):
     candidates = db.get_all_candidates()
     return _json(200, {"candidates": candidates})
 
 
 @app.get("/candidates/{candidate_id}", dependencies=[Depends(require_auth)])
-async def get_candidate(candidate_id: int):
-    db = get_db()
+def get_candidate(candidate_id: int, db=Depends(get_db)):
     candidate = db.get_candidate(candidate_id)
     if not candidate:
         return _json(404, {"error": "Candidate not found"})
@@ -95,17 +107,13 @@ async def get_candidate(candidate_id: int):
 
 
 @app.post("/candidates/{candidate_id}/final-verdict", dependencies=[Depends(require_auth)])
-async def final_verdict(candidate_id: int, request: Request):
-    db = get_db()
-    body = await request.json()
+def final_verdict(candidate_id: int, body: dict = Body(...), db=Depends(get_db)):
     db.update_final_verdict(candidate_id, body.get("final_verdict") or None)
     return _json(200, {"status": "ok"})
 
 
 @app.post("/candidates/{candidate_id}/interviews", dependencies=[Depends(require_auth)])
-async def add_interview(candidate_id: int, request: Request):
-    db = get_db()
-    body = await request.json()
+def add_interview(candidate_id: int, body: dict = Body(...), db=Depends(get_db)):
     interview_id = db.add_interview(
         candidate_id=candidate_id,
         interview_number=body.get("interview_number", 1),
@@ -118,9 +126,7 @@ async def add_interview(candidate_id: int, request: Request):
 
 
 @app.put("/interviews/{interview_id}", dependencies=[Depends(require_auth)])
-async def update_interview(interview_id: int, request: Request):
-    db = get_db()
-    body = await request.json()
+def update_interview(interview_id: int, body: dict = Body(...), db=Depends(get_db)):
     db.update_interview(
         interview_id=interview_id,
         interview_number=body.get("interview_number", 1),
@@ -133,16 +139,13 @@ async def update_interview(interview_id: int, request: Request):
 
 
 @app.delete("/interviews/{interview_id}", dependencies=[Depends(require_auth)])
-async def delete_interview(interview_id: int):
-    db = get_db()
+def delete_interview(interview_id: int, db=Depends(get_db)):
     db.delete_interview(interview_id)
     return _json(200, {"status": "ok"})
 
 
 @app.post("/candidates/{candidate_id}/proposed-customers", dependencies=[Depends(require_auth)])
-async def add_proposed_customer(candidate_id: int, request: Request):
-    db = get_db()
-    body = await request.json()
+def add_proposed_customer(candidate_id: int, body: dict = Body(...), db=Depends(get_db)):
     customer_name = body.get("customer_name", "")
     if not customer_name:
         return _json(400, {"error": "customer_name is required"})
@@ -151,8 +154,7 @@ async def add_proposed_customer(candidate_id: int, request: Request):
 
 
 @app.delete("/proposed-customers/{proposed_customer_id}", dependencies=[Depends(require_auth)])
-async def delete_proposed_customer(proposed_customer_id: int):
-    db = get_db()
+def delete_proposed_customer(proposed_customer_id: int, db=Depends(get_db)):
     db.delete_proposed_customer(proposed_customer_id)
     return _json(200, {"status": "ok"})
 
@@ -161,11 +163,10 @@ async def delete_proposed_customer(proposed_customer_id: int):
 
 
 @app.post("/search", dependencies=[Depends(require_auth)])
-async def search(request: Request):
+def search(body: dict = Body(...), db=Depends(get_db), db_ro=Depends(get_db_readonly)):
     t_start = time.time()
     print("[SEARCH] /search endpoint hit")
     logger.info("Search endpoint called")
-    body = await request.json()
     query = body.get("query", "").strip()
     if not query:
         logger.warning("Search rejected: empty query")
@@ -184,12 +185,6 @@ async def search(request: Request):
     print(f"[SEARCH] models: summary={model} sql={sql_model}")
     llm = LLMClient(model=model)
     sql_llm = LLMClient(model=sql_model)
-
-    t_db = time.time()
-    db = get_db()
-    db_ro = get_db_readonly()
-    logger.info("Search DB connections ready in %.1fms", (time.time() - t_db) * 1000)
-    print(f"[SEARCH] DB ready in {(time.time() - t_db) * 1000:.1f}ms")
 
     engine = SearchEngine(llm, db, sql_llm_client=sql_llm)
 
@@ -228,8 +223,7 @@ async def search(request: Request):
 
 
 @app.post("/upload", dependencies=[Depends(require_auth)])
-async def upload(request: Request):
-    body = await request.json()
+def upload(body: dict = Body(...), db=Depends(get_db)):
     filename = body.get("filename", "")
     file_data = body.get("file_data", "")
 
@@ -260,7 +254,6 @@ async def upload(request: Request):
 
         model = os.environ.get("LLM_MODEL", "anthropic:claude-sonnet-4-20250514")
         llm = LLMClient(model=model)
-        db = get_db()
         extractor = CVExtractor(llm, db)
         result = extractor.ingest_file(tmp_path)
 
