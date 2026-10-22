@@ -12,6 +12,8 @@ import threading
 import time
 from contextlib import contextmanager
 
+from candidates.passwords import check_password
+
 logger = logging.getLogger("helpers")
 
 # Suppress noisy third-party loggers
@@ -24,7 +26,8 @@ if len(AUTH_SECRET) < 24 or AUTH_SECRET == "dev-secret-change-me":
     raise RuntimeError("AUTH_SECRET is missing or insecure")
 if not ALLOWED_ORIGIN:
     raise RuntimeError("ALLOWED_ORIGIN is not set")
-# AUTH_USERS: JSON map of username -> sha256 hash, e.g. {"alice":"abc123...","bob":"def456..."}
+# AUTH_USERS: JSON map of username -> scrypt hash string, e.g.
+# {"alice":"scrypt$16384$8$1$<salt_b64>$<hash_b64>"} (generate with scripts/add_user.py)
 _auth_users_raw = os.environ.get("AUTH_USERS", "")
 AUTH_USERS = json.loads(_auth_users_raw) if _auth_users_raw else {}
 TOKEN_EXPIRY = 24 * 60 * 60  # 24 hours
@@ -97,8 +100,7 @@ def verify_password(username: str, password: str) -> bool:
     expected_hash = AUTH_USERS.get(username)
     if not expected_hash:
         return False
-    hashed = hashlib.sha256(password.encode()).hexdigest()
-    return hmac.compare_digest(hashed, expected_hash)
+    return check_password(password, expected_hash)
 
 
 # --- Per-request DB connections ---

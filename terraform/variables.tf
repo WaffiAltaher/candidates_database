@@ -16,7 +16,7 @@ variable "auth_secret" {
 }
 
 variable "auth_users" {
-  description = "JSON map of username -> sha256 password hash"
+  description = "JSON map of username -> scrypt password hash"
   type        = string
   sensitive   = true
 

@@ -10,7 +10,7 @@ os.environ.setdefault("AUTH_SECRET", "test-secret-that-is-long-enough-123")
 os.environ.setdefault("ALLOWED_ORIGIN", "*")
 os.environ.setdefault(
     "AUTH_USERS",
-    json.dumps({"admin": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"}),
+    json.dumps({"admin": "scrypt$16384$8$1$Y2FuZGlkYXRlcy1kZXYtMQ==$aYz/67aCRaL8SQxCWfYwt/nBlX7aSdAl8vE7H8hoQo8="}),
 )
 
 import httpx  # noqa: E402
