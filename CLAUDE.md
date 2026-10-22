@@ -40,7 +40,10 @@ candidates_database/
 │   ├── candidate.html
 │   ├── search.html
 │   └── upload.html
-├── .github/workflows/       # deploy.yml applies Terraform on push to main
+├── .github/workflows/       # deploy.yml applies Terraform on push to main;
+│                            # claude-queue.yml feeds issues to Claude (docs/claude-queue.md)
+├── .github/scripts/         # claude-queue.js, label logic for the Claude queue
+├── docs/claude-queue.md     # How the Claude issue queue works
 ├── terraform/               # Infrastructure as code
 │   ├── main.tf
 │   ├── variables.tf
