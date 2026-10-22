@@ -24,6 +24,7 @@ from candidates.helpers import (
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    force=True,
 )
 logger = logging.getLogger("main")
 
@@ -69,23 +70,18 @@ def get_db_readonly():
 
 @app.post("/login")
 async def login(request: Request):
-    print("[LOGIN] /login endpoint hit")
     logger.info("Login attempt started")
     body = await request.json()
     username = body.get("username", "")
     password = body.get("password", "")
     logger.debug("Login attempt for user=%s", username)
-    print(f"[LOGIN] user={username}")
     if not username or not password:
         logger.warning("Login rejected: missing username or password")
-        print("[LOGIN] rejected: missing credentials")
         return _json(400, {"error": "Username and password are required"})
     if not verify_password(username, password):
         logger.warning("Login failed for user=%s", username)
-        print(f"[LOGIN] FAILED for user={username}")
         return _json(401, {"error": "Invalid username or password"})
     logger.info("Login successful for user=%s", username)
-    print(f"[LOGIN] SUCCESS for user={username}")
     return _json(200, {"token": create_token()})
 
 
@@ -165,16 +161,13 @@ def delete_proposed_customer(proposed_customer_id: int, db=Depends(get_db)):
 @app.post("/search", dependencies=[Depends(require_auth)])
 def search(body: dict = Body(...), db=Depends(get_db), db_ro=Depends(get_db_readonly)):
     t_start = time.time()
-    print("[SEARCH] /search endpoint hit")
     logger.info("Search endpoint called")
     query = body.get("query", "").strip()
     if not query:
         logger.warning("Search rejected: empty query")
-        print("[SEARCH] rejected: empty query")
         return _json(400, {"error": "query is required"})
 
     logger.info("Search query: %s", query)
-    print(f"[SEARCH] query={query}")
 
     from candidates.llm_client import LLMClient
     from candidates.search_engine import SearchEngine
@@ -182,7 +175,6 @@ def search(body: dict = Body(...), db=Depends(get_db), db_ro=Depends(get_db_read
     model = os.environ.get("LLM_MODEL", "anthropic:claude-sonnet-4-20250514")
     sql_model = os.environ.get("LLM_MODEL_FAST", "anthropic:claude-haiku-4-5-20251001")
     logger.info("Search using models: summary=%s sql=%s", model, sql_model)
-    print(f"[SEARCH] models: summary={model} sql={sql_model}")
     llm = LLMClient(model=model)
     sql_llm = LLMClient(model=sql_model)
 
@@ -192,29 +184,24 @@ def search(body: dict = Body(...), db=Depends(get_db), db_ro=Depends(get_db_read
     sql = engine._generate_sql(query)
     sql_gen_ms = (time.time() - t_sql) * 1000
     logger.info("Search SQL generated in %.1fms: %s", sql_gen_ms, sql.replace("\n", " "))
-    print(f"[SEARCH] SQL generated in {sql_gen_ms:.1f}ms: {sql[:200]}")
 
     t_exec = time.time()
     try:
         raw_results = db_ro.execute_query(sql)
     except ValueError as e:
         logger.error("Search query rejected: %s", e)
-        print(f"[SEARCH] query rejected: {e}")
         return _json(200, {"sql": sql, "raw_results": [], "summary": f"Error: Generated query was rejected - {e}"})
     except Exception as e:
         logger.error("Search SQL execution failed: %s", e)
-        print(f"[SEARCH] SQL execution failed: {e}")
         return _json(200, {"sql": sql, "raw_results": [], "summary": f"Error executing query: {e}"})
     sql_exec_ms = (time.time() - t_exec) * 1000
     logger.info("Search SQL executed in %.1fms, %d rows", sql_exec_ms, len(raw_results))
-    print(f"[SEARCH] SQL executed in {sql_exec_ms:.1f}ms, {len(raw_results)} rows")
 
     t_summary = time.time()
     summary = engine._summarize_results(query, sql, raw_results)
     summary_ms = (time.time() - t_summary) * 1000
     total_ms = (time.time() - t_start) * 1000
     logger.info("Search summarized in %.1fms, total=%.1fms", summary_ms, total_ms)
-    print(f"[SEARCH] summarized in {summary_ms:.1f}ms, total={total_ms:.1f}ms")
 
     return _json(200, {"sql": sql, "raw_results": raw_results, "summary": summary})
 
