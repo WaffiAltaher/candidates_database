@@ -43,7 +43,7 @@ candidates_database/
 │   ├── search.html
 │   └── upload.html
 ├── .github/workflows/       # deploy.yml applies Terraform on push to main (terraform/** only);
-#                            # build-image.yml builds the image and opens a release PR;
+│                            # build-image.yml builds the image and opens a release PR;
 │                            # claude-queue.yml feeds issues to Claude (docs/claude-queue.md)
 ├── .github/scripts/         # claude-queue.js (label logic for the Claude queue) + its tests
 ├── docs/deployment.md       # Build, release, roll back (read this before shipping)
@@ -129,7 +129,7 @@ Secrets are stored on that environment only. There are no repository-level Actio
 | `TF_VAR_auth_secret` | HMAC signing secret |
 | `TF_VAR_auth_users` | Raw JSON map of username to scrypt password hash |
 
-`terraform/production.auto.tfvars` is committed and holds the app hostname (`candidates.ittopia.nl`) the CORS origin `https://candidates.ittopia.nl`, and `image_tag`, the image tag production runs. Do put secrets in that file.
+`terraform/production.auto.tfvars` is committed and holds the app hostname (`candidates.ittopia.nl`), the CORS origin `https://candidates.ittopia.nl`, and `image_tag`, the image tag production runs. Do not put secrets in that file.
 
 #### Local Terraform
 
@@ -154,7 +154,7 @@ Scaleway provider credentials for a local plan come from `~/.config/scw/config.y
 
 #### Container image
 
-Production runs a pinned SHA tag: `image_tag` in `terraform/production.auto.tfvars` (`registry_image` in `terraform/main.tf` uses it). SHA tags are immutable and never overwritten. `:latest` points at the newest build and is for testing; production does not use it (after the first release, when `image_tag` is still `latest`).
+Production runs a pinned SHA tag: `image_tag` in `terraform/production.auto.tfvars` (`registry_image` in `terraform/main.tf` uses it). SHA tags are immutable and never overwritten. `:latest` points at the newest build and is for testing; production does not use it. (Until the first release, `image_tag` is still `latest`.)
 
 A new image goes live when the release PR that changes `image_tag` is merged and the resulting Deploy run is approved. Rollback is a PR that sets an older SHA.
 

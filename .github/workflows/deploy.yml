@@ -3,8 +3,9 @@
 # any step runs. It does not build the container image and it does not
 # upload the plan file. A push runs it only when terraform/ or this file
 # changes; app code reaches production only through the Build image workflow
-# and a release PR (see docs/deployment.md). Do not enable step debug or TF_LOG here: the plan
-# JSON contains live credentials.
+# and a release PR (see docs/deployment.md).
+# Do not enable step debug or TF_LOG here: the plan JSON contains live
+# credentials.
 # A plan that deletes a resource fails, unless a manual run lists that
 # resource's exact address in the allow_deletes input.
 
