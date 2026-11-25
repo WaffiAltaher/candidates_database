@@ -49,7 +49,7 @@ A push to `main` that changes `terraform/**` or `deploy.yml` starts `Deploy`. Th
 - `Deploy` refuses a tag that is not in the registry.
 - `Build image` refuses to overwrite a SHA tag.
 - `Build image` runs only from `main`.
-- Tests run before the build.
+- Tests run before the build, on Python 3.11 (the same version as the production image).
 - `Deploy` still stops if the plan deletes a resource (see `CLAUDE.md`).
 
 ## 7. Local builds

@@ -41,15 +41,20 @@ jobs:
             exit 1
           fi
 
+      # Same Python version as the production image (python:3.11-slim in container/Dockerfile).
+      - name: Set up Python 3.11
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
       - name: Run tests
         shell: bash
         run: |
           set -euo pipefail
           pipx install poetry
-          if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
-            poetry env use python3.12
-          fi
+          poetry env use "$(command -v python3.11)"
           poetry install --no-interaction
+          poetry run python --version
           poetry run pytest
 
       - name: Log in to the registry
