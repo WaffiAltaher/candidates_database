@@ -1,7 +1,9 @@
 # Applies Terraform for production.
 # The job uses the production environment, so it waits for approval before
 # any step runs. It does not build the container image and it does not
-# upload the plan file. Do not enable step debug or TF_LOG here: the plan
+# upload the plan file. A push runs it only when terraform/ or this file
+# changes; app code reaches production only through the Build image workflow
+# and a release PR (see docs/deployment.md). Do not enable step debug or TF_LOG here: the plan
 # JSON contains live credentials.
 # A plan that deletes a resource fails, unless a manual run lists that
 # resource's exact address in the allow_deletes input.
@@ -12,6 +14,9 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "terraform/**"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
     inputs:
       allow_deletes:
@@ -63,6 +68,23 @@ jobs:
             fi
           done
           exit "${missing}"
+
+      - name: Check that the image tag exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$(sed -n 's/^image_tag *= *"\(.*\)"$/\1/p' terraform/production.auto.tfvars)"
+          if [ -z "${tag}" ]; then
+            echo "image_tag is not set in terraform/production.auto.tfvars"
+            exit 1
+          fi
+          image="rg.nl-ams.scw.cloud/candidates-db/candidates-api:${tag}"
+          printf '%s' "${SCW_SECRET_KEY}" | docker login rg.nl-ams.scw.cloud -u nologin --password-stdin
+          if ! docker manifest inspect "${image}" > /dev/null; then
+            echo "${image} does not exist in the registry. Run the Build image workflow first."
+            exit 1
+          fi
+          echo "deploying ${image}"
 
       - name: Terraform init
         working-directory: terraform

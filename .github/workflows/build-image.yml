@@ -1,0 +1,109 @@
+# Builds the API image and opens a release PR. Manual only.
+# It pushes rg.nl-ams.scw.cloud/candidates-db/candidates-api:<sha> and :latest,
+# then opens a PR that sets image_tag in terraform/production.auto.tfvars to
+# the new SHA. It does not deploy: merging that PR starts the Deploy workflow.
+# The job uses the production environment because the Scaleway key lives only
+# there, so it waits for approval before any step runs.
+# See docs/deployment.md.
+
+name: Build image
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: build-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      IMAGE: rg.nl-ams.scw.cloud/candidates-db/candidates-api
+      TAG: ${{ github.sha }}
+      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Require the secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SCW_SECRET_KEY}" ]; then
+            echo "missing SCW_SECRET_KEY"
+            exit 1
+          fi
+
+      - name: Run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          pipx install poetry
+          if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+            poetry env use python3.12
+          fi
+          poetry install --no-interaction
+          poetry run pytest
+
+      - name: Log in to the registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$SCW_SECRET_KEY" | docker login rg.nl-ams.scw.cloud -u nologin --password-stdin
+
+      - name: Refuse to overwrite a SHA tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker manifest inspect "$IMAGE:$TAG" > /dev/null 2>&1; then
+            echo "$IMAGE:$TAG already exists; SHA tags are never overwritten"
+            exit 1
+          fi
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 -f container/Dockerfile -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
+
+      - name: Push
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:latest"
+
+      - name: Open the release PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          file=terraform/production.auto.tfvars
+          current="$(sed -n 's/^image_tag *= *"\(.*\)"$/\1/p' "$file")"
+          if [ "$current" = "$TAG" ]; then
+            echo "image_tag is already $TAG; nothing to release"
+            exit 0
+          fi
+          git switch -c "release/$TAG"
+          sed -i "s/^image_tag *=.*/image_tag = \"$TAG\"/" "$file"
+          grep -qx "image_tag = \"$TAG\"" "$file"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          git add "$file"
+          git commit -m "Release candidates-api:$TAG"
+          git push origin "release/$TAG"
+          body="The image \`$IMAGE:$TAG\` was built from commit \`$TAG\` and is already pushed.
+
+          Merging this PR starts the Deploy workflow. It waits for approval, then rolls the container to this image.
+
+          Close this PR to skip this release."
+          url="$(gh pr create --base main --head "release/$TAG" --title "Release candidates-api:${TAG:0:7}" --body "$body")"
+          echo "$url"
