@@ -42,19 +42,21 @@ candidates_database/
 │   ├── candidate.html
 │   ├── search.html
 │   └── upload.html
-├── .github/workflows/       # deploy.yml applies Terraform on push to main;
+├── .github/workflows/       # deploy.yml applies Terraform on push to main (terraform/** only);
+│                            # build-image.yml builds the image and opens a release PR;
 │                            # claude-queue.yml feeds issues to Claude (docs/claude-queue.md)
 ├── .github/scripts/         # claude-queue.js (label logic for the Claude queue) + its tests
+├── docs/deployment.md       # Build, release, roll back (read this before shipping)
 ├── docs/claude-queue.md     # How the Claude issue queue works
 ├── terraform/               # Infrastructure as code
 │   ├── main.tf
 │   ├── variables.tf
 │   ├── outputs.tf
 │   ├── backend.tf
-│   ├── production.auto.tfvars  # App hostname and CORS origin (not secrets)
+│   ├── production.auto.tfvars  # App hostname, CORS origin and image_tag (not secrets)
 │   ├── terraform.tfvars     # Local secrets only (gitignored, not used by CI)
 │   ├── terraform.tfvars.example
-│   └── build_container.sh   # Build and push the container image only
+│   └── build_container.sh   # Local/test image builds only (never SHA tags)
 ├── dev_server.py            # Local dev server (uvicorn + static files, port 8080)
 ├── pyproject.toml
 └── CLAUDE.md
@@ -103,10 +105,11 @@ The public repository is `https://github.com/WaffiAltaher/candidates_database`.
 
 Infrastructure changes are applied by GitHub Actions, not by a local `terraform apply`. The workflow file is `.github/workflows/deploy.yml`.
 
-- It runs on a push to `main`, and when someone starts it manually with `workflow_dispatch`.
+- It runs on a push to `main` that changes `terraform/**` or the workflow file, and when someone starts it manually with `workflow_dispatch`. Code-only merges do not start it.
+- Before Terraform runs it checks that the `image_tag` from `terraform/production.auto.tfvars` exists in the registry, and fails if not.
 - The job uses the GitHub environment `production` and waits for approval from `WaffiAltaher` before Terraform runs.
 - It plans, stops if that plan deletes any resource, then applies the saved plan. It does not upload the plan file. To apply a planned delete, start the workflow manually and put the exact resource addresses, separated by spaces, in the `allow_deletes` input (for example `gh workflow run deploy.yml --ref main -f allow_deletes='scaleway_object_bucket.example'`). Any delete not listed still stops the run. Push runs never allow deletes.
-- It does not build or push the container image.
+- It does not build or push the container image. The `Build image` workflow does (below).
 - Runner is `ubuntu-latest`. Terraform is pinned to `1.5.7`. The Scaleway provider is pinned to `2.70.1` in `terraform/main.tf` and `.terraform.lock.hcl`.
 
 `gh` commands for this repository must run from `/Users/waffi/rnd/ittopia/candidates_database`. direnv in that directory selects the personal GitHub account `WaffiAltaher`. Outside `/Users/waffi/rnd/ittopia`, the CLI uses a different account.
@@ -126,7 +129,7 @@ Secrets are stored on that environment only. There are no repository-level Actio
 | `TF_VAR_auth_secret` | HMAC signing secret |
 | `TF_VAR_auth_users` | Raw JSON map of username to scrypt password hash |
 
-`terraform/production.auto.tfvars` is committed and holds the app hostname (`candidates.ittopia.nl`) and the CORS origin `https://candidates.ittopia.nl`. Do not put secrets in that file.
+`terraform/production.auto.tfvars` is committed and holds the app hostname (`candidates.ittopia.nl`), the CORS origin `https://candidates.ittopia.nl`, and `image_tag`, the image tag production runs. Do not put secrets in that file.
 
 #### Local Terraform
 
@@ -145,15 +148,21 @@ State is in the private bucket `terraform-bucket` (`candidates_database/terrafor
 
 Scaleway provider credentials for a local plan come from `~/.config/scw/config.yaml`, or from `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and `SCW_DEFAULT_PROJECT_ID`.
 
+#### Build image workflow
+
+`.github/workflows/build-image.yml` is started manually (`gh workflow run build-image.yml --repo WaffiAltaher/candidates_database --ref main`), only from `main`. It uses the `production` environment, so it waits for approval. It runs the tests, builds the image, pushes `:<commit-sha>` and `:latest`, and opens a release PR that sets `image_tag` to the SHA. Full steps: `docs/deployment.md`.
+
 #### Container image
 
-`bash terraform/build_container.sh` builds and pushes `rg.nl-ams.scw.cloud/candidates-db/candidates-api:latest`. It requires the `scw` CLI (`scw init`, then `scw registry login`). The `--platform linux/amd64` build is required on Apple Silicon.
+Production runs a pinned SHA tag: `image_tag` in `terraform/production.auto.tfvars` (`registry_image` in `terraform/main.tf` uses it). SHA tags are immutable and never overwritten. `:latest` points at the newest build and is for testing; production does not use it. (Until the first release, `image_tag` is still `latest`.)
 
-Pushing an image does not restart the running container. The next approved GitHub Actions deploy replaces `scaleway_container.api` only when that resource changes. This workflow does not build images, so an image-only push does not roll out a new container by itself.
+A new image goes live when the release PR that changes `image_tag` is merged and the resulting Deploy run is approved. Rollback is a PR that sets an older SHA.
+
+`bash terraform/build_container.sh [tag]` is for local builds and testing only. It pushes `:latest` by default, refuses 40-character SHA tags, and does not deploy. It requires the `scw` CLI (`scw init`, then `scw registry login`). The `--platform linux/amd64` build is required on Apple Silicon.
 
 #### Frontend files
 
-The frontend is part of the container image (`COPY frontend/` in `container/Dockerfile`). To ship a frontend change, build and push the image (`bash terraform/build_container.sh`) and redeploy the container.
+The frontend is part of the container image (`COPY frontend/` in `container/Dockerfile`). To ship a frontend change, merge it, then release a new image as described in `docs/deployment.md`.
 
 **What Terraform manages:**
 - Scaleway Serverless SQL Database (PostgreSQL)

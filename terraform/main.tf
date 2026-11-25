@@ -101,7 +101,7 @@ resource "scaleway_container_namespace" "main" {
 resource "scaleway_container" "api" {
   namespace_id   = scaleway_container_namespace.main.id
   name           = "candidates-api"
-  registry_image = "${scaleway_registry_namespace.main.endpoint}/candidates-api:latest"
+  registry_image = "${scaleway_registry_namespace.main.endpoint}/candidates-api:${var.image_tag}"
   port           = 8080
   cpu_limit      = 1120
   memory_limit   = 1120

@@ -40,3 +40,13 @@ variable "app_hostname" {
   description = "Public hostname bound to the API container (serves the frontend and the API)"
   type        = string
 }
+
+variable "image_tag" {
+  description = "Tag of rg.nl-ams.scw.cloud/candidates-db/candidates-api that production runs. Set in production.auto.tfvars. The Build image workflow opens a PR that changes it. See docs/deployment.md."
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.image_tag)) > 0
+    error_message = "image_tag must not be empty."
+  }
+}
