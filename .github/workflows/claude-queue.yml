@@ -1,4 +1,5 @@
 # Label-only queue that feeds issues to Claude one at a time.
+# Only issues labelled ready-for-agent by WaffiAltaher are queued.
 # A Claude Code scheduled task starts a session when claude:in-progress is
 # added to an issue. This workflow never calls Claude; it only moves labels.
 # Every trigger runs the dispatcher in the same job, because label events made
@@ -8,7 +9,8 @@ name: Claude queue
 
 on:
   issues:
-    types: [opened]
+    # opened/labeled queue a ready-for-agent issue; closed can unblock one.
+    types: [opened, labeled, closed]
   pull_request:
     types: [closed]
   schedule:
@@ -23,7 +25,9 @@ permissions:
 jobs:
   queue:
     if: >-
-      (github.event_name == 'issues' && github.event.issue.user.login == 'WaffiAltaher') ||
+      (github.event_name == 'issues' && github.event.action == 'closed') ||
+      (github.event_name == 'issues' && github.event.sender.login == 'WaffiAltaher' &&
+        (github.event.action == 'opened' || github.event.label.name == 'ready-for-agent')) ||
       (github.event_name == 'pull_request' &&
         startsWith(github.event.pull_request.head.ref, 'claude/') &&
         github.event.pull_request.head.repo.full_name == github.repository) ||
@@ -54,11 +58,13 @@ jobs:
         id: mode
         env:
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
         run: |
-          case "$EVENT_NAME" in
-            issues) mode=intake ;;
-            pull_request) mode=pr-closed ;;
-            schedule) mode=stale ;;
+          case "$EVENT_NAME/$EVENT_ACTION" in
+            issues/closed) mode=dispatch ;;
+            issues/*) mode=intake ;;
+            pull_request/*) mode=pr-closed ;;
+            schedule/*) mode=stale ;;
             *) mode=dispatch ;;
           esac
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
@@ -68,7 +74,7 @@ jobs:
         env:
           QUEUE_MODE: ${{ steps.mode.outputs.mode }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_SENDER: ${{ github.event.sender.login }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}

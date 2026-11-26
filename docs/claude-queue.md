@@ -1,6 +1,8 @@
 # Claude issue queue
 
-Issues are handed to Claude one at a time, using only labels. The workflow is
+Agent tickets (issues labelled `ready-for-agent`) are handed to Claude one at
+a time, using only labels. Other issues are ordinary tickets and are never
+queued; see `docs/agents/issue-tracker.md`. The workflow is
 `.github/workflows/claude-queue.yml`. The logic lives in
 `.github/scripts/claude-queue.js`.
 
@@ -15,6 +17,7 @@ contains `Closes #<N>`.
 
 | Label | Meaning |
 |---|---|
+| `ready-for-agent` | Agent ticket. Added by `WaffiAltaher`, it queues the issue. It stays on the issue |
 | `claude:queued` | Waiting for its turn |
 | `claude:in-progress` | Claude is working on it. Only one issue has this label at a time |
 | `claude:done` | The Claude PR was merged |
@@ -24,13 +27,19 @@ The workflow creates any of these labels that are missing on each run.
 
 ## Flow
 
-1. **New issue.** When `WaffiAltaher` opens an issue, it gets `claude:queued`.
-   Issues opened by anyone else are ignored.
+1. **Intake.** When `WaffiAltaher` opens an issue that has `ready-for-agent`,
+   or adds `ready-for-agent` to an open issue, it gets `claude:queued`.
+   Issues without that label, and labels added by anyone else, are ignored.
 2. **Dispatcher.** If no issue has `claude:in-progress`, the oldest open issue
-   with `claude:queued` loses `claude:queued` and gets `claude:in-progress`.
-   That starts the Claude session. If an issue is already in progress, the
-   dispatcher does nothing. A closed issue that still has
-   `claude:in-progress` also blocks the queue.
+   with `claude:queued` and no open blocker loses `claude:queued` and gets
+   `claude:in-progress`. That starts the Claude session. If an issue is
+   already in progress, the dispatcher does nothing. A closed issue that
+   still has `claude:in-progress` also blocks the queue.
+
+   Blockers are GitHub issue dependencies ("blocked by"). A queued issue
+   with any open blocker is skipped and stays queued. Closing any issue
+   starts a run, so closing the last blocker (an orchestrator or human
+   ticket, or an agent ticket closed by its merged PR) releases it.
 3. **PR closed.** When a PR from a `claude/` branch in this repository is
    closed, the workflow finds the linked issue from `Closes #N` (also
    `Fixes`/`Resolves`) in the PR body, or else from the branch name
@@ -43,7 +52,7 @@ The workflow creates any of these labels that are missing on each run.
    more than 3 hours with no linked PR from this attempt loses
    `claude:in-progress`, gets `claude:failed` and a comment.
 
-Every run (new issue, PR closed, schedule, manual) ends by running the
+Every run (intake, issue closed, PR closed, schedule, manual) ends by running the
 dispatcher in the same job. Label changes made by the workflow's
 `GITHUB_TOKEN` do not start other workflow runs, so nothing relies on label
 events to chain steps.
@@ -99,8 +108,9 @@ This runs the dispatcher. Use it after you queue issues by hand.
 
 ## Queue an existing issue
 
-Add `claude:queued` to the issue, then run the workflow by hand. Adding the
-label alone does not start anything.
+Add `ready-for-agent` to the issue. That queues it and runs the dispatcher.
+(Adding `claude:queued` by hand also works, but then run the workflow by
+hand: that label alone does not start anything.)
 
 ## Retry a failed issue
 

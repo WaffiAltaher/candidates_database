@@ -5,17 +5,21 @@
 // See docs/claude-queue.md for the flow.
 //
 // Entry point for actions/github-script. QUEUE_MODE selects the event step:
-//   intake    issues.opened: queue the new issue
+//   intake    issues.opened/labeled: queue the issue if it has ready-for-agent
+//             and the owner opened or labelled it
 //   pr-closed pull_request.closed: finish the linked issue
 //   stale     schedule: fail issues stuck in progress without a PR
-//   dispatch  workflow_dispatch: only reconcile and dispatch
-// Every mode then reconciles and runs the dispatcher.
+//   dispatch  issues.closed, workflow_dispatch: only reconcile and dispatch
+// Every mode then reconciles and runs the dispatcher. The dispatcher skips
+// queued issues that still have an open blocker (GitHub issue dependencies),
+// so closing a blocker (issues.closed) can release the next issue.
 //
 // The label-filtered issue list lags a few seconds behind label writes. The
 // list is therefore only used to find candidates. Every decision is confirmed
 // with issues.get plus this run's own writes, and after each write the run
 // waits until the list shows it, so the next (serialized) run sees it too.
 
+const READY = 'ready-for-agent';
 const QUEUED = 'claude:queued';
 const IN_PROGRESS = 'claude:in-progress';
 const DONE = 'claude:done';
@@ -27,6 +31,7 @@ const LIST_WAIT_MS = 90 * 1000;
 const LIST_BACKOFF_MS = [1000, 2000, 3000, 5000, 8000, 13000];
 
 const LABELS = {
+  [READY]: { color: '0052cc', description: 'Agent ticket: the Claude queue implements it' },
   [QUEUED]: { color: 'c5def5', description: 'Waiting in the Claude queue' },
   [IN_PROGRESS]: { color: 'fbca04', description: 'Claude is working on this issue. Do not add labels.' },
   [DONE]: { color: '0e8a16', description: 'Claude PR merged' },
@@ -76,7 +81,9 @@ module.exports = async ({ github, context, core, sleep = defaultSleep }) => {
     for (const [label, present] of written.get(number) || []) {
       if (present) labels.add(label); else labels.delete(label);
     }
-    return { number, state: data.state, created_at: data.created_at, labels };
+    const deps = data.issue_dependencies_summary;
+    const openBlockers = (deps && deps.blocked_by) || 0;
+    return { number, state: data.state, created_at: data.created_at, labels, openBlockers };
   }
 
   // Candidate issue numbers from the (possibly lagging) label-filtered list.
@@ -195,12 +202,16 @@ module.exports = async ({ github, context, core, sleep = defaultSleep }) => {
 
   async function intake() {
     const number = Number(env.ISSUE_NUMBER);
-    if (env.ISSUE_AUTHOR !== OWNER_LOGIN) {
-      core.info(`Ignoring #${number} opened by ${env.ISSUE_AUTHOR}`);
+    if (env.ISSUE_SENDER !== OWNER_LOGIN) {
+      core.info(`Ignoring #${number}: event sent by ${env.ISSUE_SENDER}`);
       return;
     }
     const issue = await confirm(number);
     if (!issue || issue.state !== 'open') return;
+    if (!issue.labels.has(READY)) {
+      core.info(`#${number} has no ${READY} label, not queueing it`);
+      return;
+    }
     if ([IN_PROGRESS, QUEUED, DONE, FAILED].some((l) => issue.labels.has(l))) {
       core.info(`#${number} already has a queue label, leaving it alone`);
       return;
@@ -272,8 +283,8 @@ module.exports = async ({ github, context, core, sleep = defaultSleep }) => {
     }
   }
 
-  // If no issue has claude:in-progress, move the oldest open queued issue to
-  // claude:in-progress. Closed issues count too: an issue closed by hand
+  // If no issue has claude:in-progress, move the oldest open queued issue
+  // without open blockers to claude:in-progress. Closed issues count too: an issue closed by hand
   // while in progress still blocks until the PR closes or the stale check runs.
   async function dispatch() {
     const active = await confirmedWith(IN_PROGRESS, 'all');
@@ -282,11 +293,16 @@ module.exports = async ({ github, context, core, sleep = defaultSleep }) => {
       return;
     }
     const queued = (await confirmedWith(QUEUED, 'open')).filter((i) => !i.labels.has(IN_PROGRESS));
-    if (queued.length === 0) {
-      core.info('Queue is empty');
+    const blocked = queued.filter((i) => i.openBlockers > 0);
+    if (blocked.length > 0) {
+      core.info(`Blocked: ${blocked.map((i) => `#${i.number} (${i.openBlockers} open)`).join(', ')}`);
+    }
+    const ready = queued.filter((i) => i.openBlockers === 0);
+    if (ready.length === 0) {
+      core.info(queued.length === 0 ? 'Queue is empty' : 'Every queued issue is blocked');
       return;
     }
-    const next = queued[0];
+    const next = ready[0];
     await removeLabel(next.number, QUEUED);
     await github.rest.issues.addLabels({ owner, repo, issue_number: next.number, labels: [IN_PROGRESS] });
     record(next.number, IN_PROGRESS, true);
