@@ -44,10 +44,12 @@ candidates_database/
 │   └── upload.html
 ├── .github/workflows/       # deploy.yml applies Terraform on push to main (terraform/** only);
 │                            # build-image.yml builds the image and opens a release PR;
-│                            # claude-queue.yml feeds issues to Claude (docs/claude-queue.md)
+│                            # claude-queue.yml feeds ready-for-agent issues to Claude (docs/claude-queue.md)
 ├── .github/scripts/         # claude-queue.js (label logic for the Claude queue) + its tests
 ├── docs/deployment.md       # Build, release, roll back (read this before shipping)
 ├── docs/claude-queue.md     # How the Claude issue queue works
+├── docs/agents/             # Issue tracker and domain-doc rules for agent skills
+├── GLOSSARY.md              # Project vocabulary (domain and delivery terms)
 ├── terraform/               # Infrastructure as code
 │   ├── main.tf
 │   ├── variables.tf
@@ -215,3 +217,13 @@ printf '%s' '{"existing_user":"<existing_hash>","new_user":"<new_hash>"}' \
 3. Run the deploy workflow and approve it. No image rebuild is required. The workflow updates the container environment variable.
 
 **To remove a user:** Set the secret to the JSON object without that user, then run and approve the workflow again. Their open sessions end once the deploy finishes.
+
+## Agent skills
+
+### Issue tracker
+
+Tickets live in GitHub issues; the labels `ready-for-agent`, `ready-for-orchestrator` and `ready-for-human` mark the ticket type, and only `ready-for-agent` starts the Claude queue. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.

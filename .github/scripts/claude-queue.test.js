@@ -13,11 +13,17 @@ const H = 3600e3;
 const NOW = Date.now();
 const iso = (t) => new Date(t).toISOString();
 const REPO = 'WaffiAltaher/candidates_database';
-const ALL = ['claude:queued', 'claude:in-progress', 'claude:done', 'claude:failed'];
+const READY = 'ready-for-agent';
+const ALL = [READY, 'claude:queued', 'claude:in-progress', 'claude:done', 'claude:failed'];
 
-function issue(number, labels, createdAgo, state = 'open') {
-  return { number, state, created_at: iso(NOW - createdAgo), labels: labels.map((name) => ({ name })) };
+// New issues default to READY, the label that makes them agent tickets.
+function issue(number, labels, createdAgo, state = 'open', blockedBy = 0) {
+  return {
+    number, state, created_at: iso(NOW - createdAgo), labels: labels.map((name) => ({ name })),
+    issue_dependencies_summary: { blocked_by: blockedBy },
+  };
 }
+const ready = (number, createdAgo, blockedBy = 0) => issue(number, [READY], createdAgo, 'open', blockedBy);
 
 function pr(issueNumber, { state, createdAgo, closedAgo = null, merged = false, body, ref, repo = REPO }) {
   return {
@@ -98,7 +104,7 @@ function client(w) {
 
 async function runQueue(w, envs) {
   Object.assign(process.env, {
-    ISSUE_NUMBER: '', ISSUE_AUTHOR: '', PR_BODY: '', PR_HEAD_REF: '', PR_HEAD_REPO: '', PR_MERGED: '',
+    ISSUE_NUMBER: '', ISSUE_SENDER: '', PR_BODY: '', PR_HEAD_REF: '', PR_HEAD_REPO: '', PR_MERGED: '',
   }, envs);
   const start = w.log.length;
   const core = { info: () => {}, warning: (m) => w.log.push(`warn ${m}`) };
@@ -109,7 +115,7 @@ async function runQueue(w, envs) {
 }
 
 const inProgressAt = (ago) => [{ event: 'labeled', label: { name: 'claude:in-progress' }, created_at: iso(NOW - ago) }];
-const opened = (n, author = 'WaffiAltaher') => ({ QUEUE_MODE: 'intake', ISSUE_NUMBER: String(n), ISSUE_AUTHOR: author });
+const opened = (n, sender = 'WaffiAltaher') => ({ QUEUE_MODE: 'intake', ISSUE_NUMBER: String(n), ISSUE_SENDER: sender });
 const closed = (n, merged, extra = {}) => ({
   QUEUE_MODE: 'pr-closed', PR_BODY: `Closes #${n}`, PR_HEAD_REF: `claude/issue-${n}`,
   PR_HEAD_REPO: REPO, PR_MERGED: String(merged), ...extra,
@@ -130,7 +136,7 @@ for (const lag of [0, 3]) {
   const tag = lag ? ` (list lags ${lag} calls)` : '';
 
   test(`intake while idle creates labels, queues and dispatches${tag}`, async () => {
-    const w = world({ labels: [], issues: [issue(5, [], 0)], lag });
+    const w = world({ labels: [], issues: [ready(5, 0)], lag });
     assert.deepEqual(await runQueue(w, opened(5)), [
       ...ALL.map((l) => `create ${l}`),
       '+claude:queued #5', '-claude:queued #5', '+claude:in-progress #5',
@@ -139,7 +145,7 @@ for (const lag of [0, 3]) {
 
   test(`intake while busy only queues${tag}`, async () => {
     const w = busy({ lag });
-    w.issues[5] = issue(5, [], 0);
+    w.issues[5] = ready(5, 0);
     assert.deepEqual(await runQueue(w, opened(5)), ['+claude:queued #5']);
   });
 
@@ -152,7 +158,7 @@ for (const lag of [0, 3]) {
   });
 
   test(`two issues opened back to back dispatch only the first${tag}`, async () => {
-    const w = world({ issues: [issue(8, [], 2), issue(9, [], 1)], lag });
+    const w = world({ issues: [ready(8, 2), ready(9, 1)], lag });
     const first = await runQueue(w, opened(8));
     const second = await runQueue(w, opened(9));
     assert.deepEqual(first, ['+claude:queued #8', '-claude:queued #8', '+claude:in-progress #8']);
@@ -160,7 +166,7 @@ for (const lag of [0, 3]) {
   });
 
   test(`merge, then the next issue is dispatched and later finished${tag}`, async () => {
-    const w = world({ issues: [issue(5, [], 2), issue(6, [], 1)], lag });
+    const w = world({ issues: [ready(5, 2), ready(6, 1)], lag });
     await runQueue(w, opened(5));
     await runQueue(w, opened(6));
     w.pulls = [pr(5, { state: 'closed', createdAgo: 0.1 * H, closedAgo: 0, merged: true })];
@@ -174,7 +180,7 @@ for (const lag of [0, 3]) {
 }
 
 test('a list that never catches up warns after about 90s and still dispatches correctly', async () => {
-  const w = world({ issues: [issue(5, [], 0)], lag: 1e6 });
+  const w = world({ issues: [ready(5, 0)], lag: 1e6 });
   const log = await runQueue(w, opened(5));
   assert.deepEqual(log.filter((l) => !l.startsWith('warn')), [
     '+claude:queued #5', '-claude:queued #5', '+claude:in-progress #5',
@@ -184,9 +190,31 @@ test('a list that never catches up warns after about 90s and still dispatches co
   assert.ok(w.slept >= 2 * 90e3 && w.slept < 2 * 110e3, `slept ${w.slept}ms`);
 });
 
-test('issue opened by someone else is ignored', async () => {
-  const w = world({ issues: [issue(5, [], 0)] });
+test('issue opened or labelled by someone else is ignored', async () => {
+  const w = world({ issues: [ready(5, 0)] });
   assert.deepEqual(await runQueue(w, opened(5, 'bob')), []);
+});
+
+test('issue without ready-for-agent is not queued', async () => {
+  const w = world({ issues: [issue(5, ['ready-for-orchestrator'], 0)] });
+  assert.deepEqual(await runQueue(w, opened(5)), []);
+});
+
+test('blocked queued issue is skipped for the next unblocked one', async () => {
+  const w = world({ issues: [issue(3, [READY, 'claude:queued'], 6 * H, 'open', 1), issue(4, [READY, 'claude:queued'], 5 * H)] });
+  assert.deepEqual(await runQueue(w, { QUEUE_MODE: 'dispatch' }), ['-claude:queued #4', '+claude:in-progress #4']);
+});
+
+test('nothing is dispatched while every queued issue is blocked', async () => {
+  const w = world({ issues: [issue(3, [READY, 'claude:queued'], 6 * H, 'open', 2)] });
+  assert.deepEqual(await runQueue(w, { QUEUE_MODE: 'dispatch' }), []);
+});
+
+test('closing the last blocker releases the blocked issue', async () => {
+  const w = world({ issues: [issue(3, [READY], 6 * H, 'open', 1)] });
+  assert.deepEqual(await runQueue(w, opened(3)), ['+claude:queued #3']);
+  w.issues[3].issue_dependencies_summary.blocked_by = 0;
+  assert.deepEqual(await runQueue(w, { QUEUE_MODE: 'dispatch' }), ['-claude:queued #3', '+claude:in-progress #3']);
 });
 
 test('PR rejected, linked only by branch name, fails the issue', async () => {
