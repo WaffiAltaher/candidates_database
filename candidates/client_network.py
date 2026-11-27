@@ -9,7 +9,7 @@ import logging
 import os
 import threading
 
-logger = logging.getLogger("main")
+logger = logging.getLogger(__name__)
 
 DEFAULT_GEOIP_PATH = "/app/geoip/dbip-country-lite.mmdb"
 

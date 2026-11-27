@@ -3,7 +3,9 @@
 import logging
 import re
 
-_NEEDS_QUOTE = re.compile(r'[\s"=\\\x00-\x1f\x7f]')
+_CONTROL = r'\x00-\x1f\x7f-\x9f  '
+_NEEDS_QUOTE = re.compile(r'[\s"=\\' + _CONTROL + ']')
+_ESCAPE_CHARS = re.compile(r'["\\' + _CONTROL + ']')
 _ESCAPES = {'"': '\\"', "\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
 
 
@@ -16,7 +18,7 @@ def _value(v: object) -> str:
     if s == "":
         return "-"
     if _NEEDS_QUOTE.search(s):
-        return '"' + re.sub(r'["\\\x00-\x1f\x7f]', lambda m: _escape(m.group()), s) + '"'
+        return '"' + _ESCAPE_CHARS.sub(lambda m: _escape(m.group()), s) + '"'
     return s
 
 

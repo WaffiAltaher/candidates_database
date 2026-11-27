@@ -67,27 +67,28 @@ def test_ipv4_mapped_ipv6_treated_as_ipv4(client, lines):
     assert "network=203.0.113.0/24" in lines[-1]
 
 
-def test_missing_header_uses_peer(client, lines):
-    client.get("/app.js")
-    assert fields(lines[-1])["network"] == "-" or "/" in fields(lines[-1])["network"]
-    assert client_network.truncate("testclient") == "-"
+def test_missing_header_uses_peer(monkeypatch, tmp_path, lines):
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setattr(client_network, "country", lambda ip: "NL")
+    peer = TestClient(main_module.app, client=("198.51.100.9", 123))
+    peer.get("/app.js")
+    assert "network=198.51.100.0/24" in lines[-1]
 
 
-def test_peer_used_without_header(monkeypatch, client, lines):
-    monkeypatch.setattr(client_network, "client_ip", lambda r: r.client.host)
-    monkeypatch.setattr(client_network, "truncate", client_network.truncate)
-    assert client_network.truncate("198.51.100.9") == "198.51.100.0/24"
+def test_garbage_header_falls_back_to_peer(monkeypatch, tmp_path, lines):
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setattr(client_network, "country", lambda ip: "NL")
+    peer = TestClient(main_module.app, client=("198.51.100.9", 123))
+    peer.get("/app.js", headers={"X-Real-IP": "garbage"})
+    assert "network=198.51.100.0/24" in lines[-1]
 
 
-def test_garbage_header_falls_back_to_peer(client):
-    class Req:
-        headers = {"X-Real-IP": "garbage"}
+def test_logfmt_escapes_unicode_line_breaks():
+    from candidates.access_log import logfmt
 
-        class client:
-            host = "198.51.100.9"
-
-    assert client_network.client_ip(Req) == "198.51.100.9"
-    assert client_network.truncate(client_network.client_ip(Req)) == "198.51.100.0/24"
+    out = logfmt([("user", "a\u2028event=request x\x85y\x9bz\u2029")])
+    assert out == 'user="a\\u2028event=request x\\u0085y\\u009bz\\u2029"'
+    assert all(ord(c) < 0x7F and ord(c) >= 0x20 for c in out)
 
 
 def test_x_forwarded_for_ignored(client, lines):

@@ -21,7 +21,8 @@ def months(today: datetime.date):
 def download(target: str) -> None:
     for y, m in months(datetime.datetime.now(datetime.timezone.utc).date()):
         try:
-            with urllib.request.urlopen(URL.format(y=y, m=m), timeout=120) as resp, \
+            req = urllib.request.Request(URL.format(y=y, m=m), headers={"User-Agent": "candidates-api-image-build"})
+            with urllib.request.urlopen(req, timeout=120) as resp, \
                     gzip.GzipFile(fileobj=resp) as gz, open(target, "wb") as out:
                 shutil.copyfileobj(gz, out)
             return
