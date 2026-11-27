@@ -15,6 +15,7 @@ aisuite = "^0.1.14"
 anthropic = "^0.86.0"
 fastapi = "*"
 uvicorn = {version = "*", extras = ["standard"]}
+maxminddb = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
