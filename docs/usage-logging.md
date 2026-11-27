@@ -59,6 +59,8 @@ The **Usage** page in the app shows the daily totals.
 
 For the detailed lines, open Cockpit: Scaleway console → Cockpit → Open dashboards (Grafana) → Explore → data source **Scaleway Logs**.
 
+If the data source list in Grafana is empty, copy the data sources into Grafana with `scw cockpit grafana sync-data-sources`, then reload Grafana. The container logs are in the **nl-ams** Scaleway Logs source.
+
 Scaleway wraps each output line in JSON (`{"stream":..., "message":"<our line>"}`), so queries unwrap it before `logfmt`. Do not filter on `stream`; filter on `event="request"`. The selector below is for the current container; the `resource_name` prefix comes from the Terraform namespace and changes only if the namespace is recreated. If it stops matching, copy the current value from Explore → label browser.
 
 Selector: `{resource_type="serverless_container", resource_name="candidatesdb25d8ab32-candidates-api"}`
