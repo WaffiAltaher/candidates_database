@@ -14,6 +14,8 @@
         input[type="password"]:focus { border-color: #3498db; outline: none; }
         .btn-primary { display: block; width: 100%; padding: 0.75rem; background: #3498db; color: white; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; }
         .btn-primary:hover { background: #2980b9; }
+        .usage-notice { margin-top: 1rem; font-size: 0.8rem; color: #777; line-height: 1.4; }
+        .usage-notice a { color: #777; }
         .error { color: #e74c3c; margin-bottom: 1rem; display: none; }
     </style>
 </head>
@@ -28,6 +30,7 @@
             <input type="password" id="password" name="password" required>
             <button type="submit" class="btn-primary">Login</button>
         </form>
+        <p class="usage-notice">We log usage (username, network area and country, request counts) to see how the system is used. Kept 7 days in detail and 12 months as daily totals. <a href="https://github.com/WaffiAltaher/candidates_database/blob/main/docs/usage-logging.md#privacy" target="_blank" rel="noopener noreferrer">Privacy</a></p>
     </div>
     <script src="/app.js"></script>
     <script src="/login.js"></script>

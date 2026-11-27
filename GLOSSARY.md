@@ -29,3 +29,9 @@ _Avoid_: Coordinator, main session
 **Queue**:
 The mechanism that hands **Agent tickets** to cloud agents one at a time, skipping any whose blockers are still open.
 _Avoid_: Pipeline, dispatcher
+
+### Usage
+
+**Network**:
+The part of a visitor's IP address that identifies their network area, never a single device.
+_Avoid_: IP, IP address, client IP
