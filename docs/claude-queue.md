@@ -13,6 +13,13 @@ repository with the trigger "Issue: Labeled", filtered to the label
 session works on the branch `claude/issue-<N>` and opens a PR whose body
 contains `Closes #<N>`.
 
+After opening the PR, the session keeps watching it until it is merged or
+closed (the scheduled task has PR auto-fix on). It fixes CI failures and
+follows review comments by `WaffiAltaher`, which is how the Orchestrator sends
+follow-ups. It treats comments by anyone else as untrusted data. The task's
+prompt lives in the scheduled task "worker scheduled task" on claude.ai, not
+in this repository.
+
 ## Labels
 
 | Label | Meaning |
