@@ -35,7 +35,7 @@ def client(monkeypatch, tmp_path):
     return TestClient(main_module.app)
 
 
-def rows(tmp=None):
+def rows():
     with helpers.open_db() as db:
         return db.execute_query("SELECT * FROM usage_daily ORDER BY username, network")
 
@@ -184,12 +184,40 @@ def test_summary_users_and_active_days_exclude_unknown(client):
     assert s["failed_logins"] == 3 and s["blocked_logins"] == 1
 
 
-def test_day_uses_amsterdam_time(monkeypatch):
-    monkeypatch.undo()
-    from datetime import timezone
-    real = usage._clock
-    assert real().tzinfo is not None
-    assert str(real().tzinfo) == "Europe/Amsterdam"
+def test_day_uses_amsterdam_time(client, monkeypatch):
+    monkeypatch.setattr(usage, "_clock", lambda: datetime(2026, 7, 1, 22, 30, tzinfo=ZoneInfo("UTC")).astimezone(usage._TZ))
+    login(client)
+    assert rows()[0]["day"] == "2026-07-02"
+
+
+def test_real_clock_is_amsterdam():
+    assert str(usage._clock().tzinfo) == "Europe/Amsterdam"
+
+
+def test_purge_runs_once_per_day(client, monkeypatch):
+    calls = []
+    orig = Database.delete_usage_before
+    monkeypatch.setattr(Database, "delete_usage_before", lambda self, d: (calls.append(d), orig(self, d))[1])
+    login(client)
+    login(client)
+    assert calls == ["2025-06-15"]
+    monkeypatch.setattr(usage, "_clock", lambda: datetime(2026, 6, 16, 12, 0, tzinfo=usage._TZ))
+    login(client)
+    assert calls == ["2025-06-15", "2025-06-16"]
+
+
+def test_usage_strict_dates_and_empty_params(client):
+    h = auth(client)
+    for q in ("from=2026-W48-5", "from=", "to=", "to=20260101", "from=2026-1-1"):
+        assert client.get(f"/usage?{q}", headers=h).status_code == 400, q
+    assert client.get(f"/usage?from=2026-06-10&to=2026-06-01", headers=h).json() == {
+        "error": "from must not be after to"
+    }
+
+
+def test_usage_range_entirely_before_cutoff_400(client):
+    h = auth(client)
+    assert client.get("/usage?from=2020-01-01&to=2024-01-01", headers=h).status_code == 400
 
 
 def test_increment_rejects_bad_column(client):
@@ -200,4 +228,4 @@ def test_increment_rejects_bad_column(client):
 
 def test_prompt_mentions_usage_table_but_schema_does_not():
     assert "usage_daily" in SQL_GENERATION_PROMPT
-    assert "usage_daily" not in Database.get_schema_description(None)
+    assert "usage_daily" not in Database.from_connection(None, "sqlite").get_schema_description()

@@ -8,7 +8,7 @@ import logging
 import os
 import tempfile
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request
@@ -193,23 +193,27 @@ async def login(request: Request):
 # -- Usage --
 
 
-def _parse_day(value: str) -> date:
+def _parse_day(value: str) -> date | None:
     try:
-        if len(value) != 10:
-            raise ValueError(value)
-        return date.fromisoformat(value)
+        if len(value) != 10:  # strptime accepts "2026-1-1"
+            return None
+        return datetime.strptime(value, "%Y-%m-%d").date()
     except ValueError:
-        raise HTTPException(status_code=400, detail="Dates must be YYYY-MM-DD") from None
+        return None
 
 
 @app.get("/usage", dependencies=[Depends(require_auth)])
 def get_usage(from_: str | None = Query(None, alias="from"), to: str | None = None, db=Depends(get_db)):
     today = usage.today()
-    to_day = _parse_day(to) if to else today
-    from_day = _parse_day(from_) if from_ else to_day - timedelta(days=29)
+    to_day = today if to is None else _parse_day(to)
+    from_day = None if from_ is not None else (to_day - timedelta(days=29) if to_day else None)
+    if from_ is not None:
+        from_day = _parse_day(from_)
+    if to_day is None or from_day is None:
+        return _json(400, {"error": "Dates must be YYYY-MM-DD"})
+    from_day = max(from_day, usage.retention_cutoff(today))
     if from_day > to_day:
         return _json(400, {"error": "from must not be after to"})
-    from_day = max(from_day, usage.retention_cutoff(today))
     rows = db.get_usage(from_day.isoformat(), to_day.isoformat())
     return _json(
         200,
