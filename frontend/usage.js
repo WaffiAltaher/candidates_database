@@ -23,13 +23,19 @@ if (requireAuth()) {
 
   async function loadUsage(query) {
     try {
-      renderUsage(await api('/usage' + (query || '')));
+      const data = await api('/usage' + (query || ''));
+      if (!data) return;
+      renderUsage(data);
     } catch (err) {
       showFlash(err.message, 'error');
     }
   }
 
   document.getElementById('show-usage').addEventListener('click', () => {
+    if (!fromEl.value || !toEl.value) {
+      showFlash('Pick both dates', 'error');
+      return;
+    }
     const params = new URLSearchParams({ from: fromEl.value, to: toEl.value });
     loadUsage('?' + params.toString());
   });
