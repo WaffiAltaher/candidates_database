@@ -20,7 +20,7 @@ Every response carries a strict CSP (scripts only from our own files), HSTS, `no
 
 ### Usage logging
 
-Every request writes one logfmt line (`event=request`, user, truncated client network, country) to the container log, which Scaleway Cockpit keeps for 7 days. The same events are counted per day in the `usage_daily` table, kept 12 months. The full IP is never stored. Fields, queries, privacy and data-subject requests: `docs/usage-logging.md`; rationale: `docs/adr/0002-log-truncated-client-networks.md`.
+Every request writes one logfmt line (`event=request`, user, truncated client network, country) to the container log, which Scaleway Cockpit keeps for 7 days. Authenticated requests and login outcomes (success, failure, blocked) are also counted per day in the `usage_daily` table, kept 12 months; static files, anonymous requests and `/login` 400s are logged but not counted. The full IP is never stored. Fields, queries, privacy and data-subject requests: `docs/usage-logging.md`; rationale: `docs/adr/0002-log-truncated-client-networks.md`.
 
 ## Project Structure
 
@@ -33,10 +33,14 @@ candidates_database/
 │   ├── config.py            # Env-var based config
 │   ├── llm_client.py        # AISuite wrapper
 │   ├── search_engine.py     # NL -> SQL -> results
+│   ├── access_log.py        # logfmt request logger
+│   ├── client_network.py    # Client IP -> truncated network + country
+│   ├── usage.py             # Daily usage counting, retention, summaries
 │   ├── cv_extractor.py      # PDF -> structured data -> DB
 │   └── document_processor.py # PDF text extraction
 ├── container/               # Serverless container (FastAPI)
 │   ├── main.py              # FastAPI app — all API routes
+│   ├── fetch_geoip.py       # Downloads DB-IP Country Lite at image build
 │   ├── Dockerfile           # Docker image (python:3.11-slim + uvicorn)
 │   └── requirements.txt     # pip dependencies
 ├── frontend/                # Static HTML + vanilla JS

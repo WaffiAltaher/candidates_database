@@ -31,7 +31,7 @@ The full IP is never stored: it is truncated in the app (`candidates/client_netw
   - `failed_logins`: wrong password. For an unknown username the row is `(unknown)` with network and country `*`.
   - `blocked_logins`: logins refused by the rate limit (429). The row has network and country `*`; unknown usernames go to `(unknown)`.
   - Days are Europe/Amsterdam calendar days.
-  - Rows older than one year are deleted automatically, at the first write each day.
+  - Rows older than one year are deleted automatically, once a day per container instance, at its first write that day.
 
 ## Privacy
 

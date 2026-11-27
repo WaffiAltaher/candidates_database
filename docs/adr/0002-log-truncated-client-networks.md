@@ -4,7 +4,7 @@ We want to see how the system is used: who logs in, how often, and from which ar
 
 ## Considered Options
 
-- Full IP in the 7-day logs only: needs a legitimate-interest balancing test for the full address and gives barely more information than the network.
+- Full IP in the 7-day logs only: harder to justify under minimisation and the legitimate-interest balancing test, for barely more information than the network.
 - Keyed hash of the IP: pseudonymous, but gives no location and needs a rotating secret.
 
 ## Consequences
