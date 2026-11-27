@@ -16,6 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from candidates import client_network
+from candidates.access_log import access_logger, logfmt
 from candidates.login_limiter import LoginLimiter
 from candidates.search_engine import SEARCH_FAILED_MESSAGE
 from candidates.helpers import (
@@ -65,6 +67,37 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    ip = client_network.client_ip(request)
+    request.state.network = client_network.truncate(ip)
+    request.state.country = client_network.country(ip)
+    del ip
+    start = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        user = getattr(request.state, "username", None) or getattr(request.state, "login_username", None)
+        access_logger.info(
+            logfmt(
+                [
+                    ("event", "request"),
+                    ("method", request.method),
+                    ("path", request.url.path),
+                    ("status", status),
+                    ("duration_ms", int((time.perf_counter() - start) * 1000)),
+                    ("user", user),
+                    ("network", request.state.network),
+                    ("country", request.state.country),
+                    ("request_id", request.headers.get("X-Request-ID")),
+                ]
+            )
+        )
+
+
 def _json(status: int, body: dict) -> JSONResponse:
     return JSONResponse(status_code=status, content=body)
 
@@ -84,7 +117,6 @@ async def require_auth(request: Request):
     if username is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     request.state.username = username
-    logger.info("%s %s user=%s", request.method, request.url.path, username)
 
 
 def get_db():
@@ -111,6 +143,7 @@ async def login(request: Request):
     body = await request.json()
     username = body.get("username", "")
     password = body.get("password", "")
+    request.state.login_username = username
     logger.debug("Login attempt for user=%s", username)
     if not username or not password:
         logger.warning("Login rejected: missing username or password")

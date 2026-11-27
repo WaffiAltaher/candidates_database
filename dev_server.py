@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None):
         print(f"Dev server running at http://{args.host}:{args.port} (reachable from other machines)")
     print(f"Using SQLite database: {db_path}")
     print("Default login: admin / admin")
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port, access_log=False)
 
 
 if __name__ == "__main__":
