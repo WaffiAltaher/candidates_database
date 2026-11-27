@@ -3,7 +3,7 @@
 import logging
 import re
 
-_CONTROL = r'\x00-\x1f\x7f-\x9f  '
+_CONTROL = r'\x00-\x1f\x7f-\x9f\u2028\u2029'
 _NEEDS_QUOTE = re.compile(r'[\s"=\\' + _CONTROL + ']')
 _ESCAPE_CHARS = re.compile(r'["\\' + _CONTROL + ']')
 _ESCAPES = {'"': '\\"', "\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
