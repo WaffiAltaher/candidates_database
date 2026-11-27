@@ -165,6 +165,18 @@ class Database:
                     candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
                     customer_name TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS usage_daily (
+                    day TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    network TEXT NOT NULL,
+                    country TEXT NOT NULL,
+                    requests INTEGER NOT NULL DEFAULT 0,
+                    logins INTEGER NOT NULL DEFAULT 0,
+                    failed_logins INTEGER NOT NULL DEFAULT 0,
+                    blocked_logins INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (day, username, network, country)
+                );
             """
             cursor = self.conn.cursor()
             cursor.execute(ddl)
@@ -216,6 +228,18 @@ class Database:
                     candidate_id INTEGER NOT NULL,
                     customer_name TEXT NOT NULL,
                     FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS usage_daily (
+                    day TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    network TEXT NOT NULL,
+                    country TEXT NOT NULL,
+                    requests INTEGER NOT NULL DEFAULT 0,
+                    logins INTEGER NOT NULL DEFAULT 0,
+                    failed_logins INTEGER NOT NULL DEFAULT 0,
+                    blocked_logins INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (day, username, network, country)
                 );
             """)
             self.conn.commit()
@@ -455,6 +479,39 @@ class Database:
             (proposed_customer_id,),
         )
         return rows[0] if rows else None
+
+    USAGE_COLUMNS = ("requests", "logins", "failed_logins", "blocked_logins")
+
+    def increment_usage(self, day: str, username: str, network: str, country: str, column: str):
+        """Add 1 to one usage counter for (day, username, network, country)."""
+        if column not in self.USAGE_COLUMNS:
+            raise ValueError(f"Unknown usage column: {column}")
+        p = self.placeholder
+        self._execute(
+            f"INSERT INTO usage_daily (day, username, network, country, {column}) "
+            f"VALUES ({p}, {p}, {p}, {p}, 1) "
+            f"ON CONFLICT (day, username, network, country) "
+            f"DO UPDATE SET {column} = usage_daily.{column} + 1",
+            (day, username, network, country),
+        )
+        self.conn.commit()
+
+    def delete_usage_before(self, day: str):
+        """Delete usage rows with a day strictly before `day` (YYYY-MM-DD)."""
+        p = self.placeholder
+        self._execute(f"DELETE FROM usage_daily WHERE day < {p}", (day,))
+        self.conn.commit()
+
+    def get_usage(self, from_day: str, to_day: str) -> list[dict]:
+        """Usage rows with from_day <= day <= to_day, newest day first."""
+        p = self.placeholder
+        return self.execute_query(
+            "SELECT day, username, network, country, requests, logins, "
+            "failed_logins, blocked_logins FROM usage_daily "
+            f"WHERE day >= {p} AND day <= {p} "
+            "ORDER BY day DESC, username, network, country",
+            (from_day, to_day),
+        )
 
     def execute_query(self, sql: str, params=None) -> list[dict]:
         """Execute a SQL query and return results as list of dicts.

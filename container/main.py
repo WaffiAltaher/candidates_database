@@ -8,15 +8,17 @@ import logging
 import os
 import tempfile
 import time
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Request
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask, BackgroundTasks
 
-from candidates import client_network
+from candidates import client_network, usage
 from candidates.access_log import access_logger, logfmt
 from candidates.login_limiter import LoginLimiter
 from candidates.search_engine import SEARCH_FAILED_MESSAGE
@@ -67,6 +69,26 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
+def _attach_usage(request: Request, response) -> None:
+    event = getattr(request.state, "usage_event", None)
+    username = None
+    if event:
+        username = getattr(request.state, "login_username", None)
+    elif getattr(request.state, "username", None):
+        event = "requests"
+        username = request.state.username
+    if not event or not isinstance(username, str):
+        return
+    task = BackgroundTask(usage.record, event, username, request.state.network, request.state.country)
+    if response.background is None:
+        response.background = task
+    else:
+        tasks = BackgroundTasks()
+        tasks.add_task(response.background)
+        tasks.add_task(task)
+        response.background = tasks
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     ip = client_network.client_ip(request)
@@ -78,6 +100,7 @@ async def log_requests(request: Request, call_next):
     try:
         response = await call_next(request)
         status = response.status_code
+        _attach_usage(request, response)
         return response
     finally:
         user = getattr(request.state, "username", None) or getattr(request.state, "login_username", None)
@@ -153,15 +176,49 @@ async def login(request: Request):
         logger.warning("Login blocked for user=%s, retry after %ss", username, wait)
         response = _json(429, {"error": "Too many failed attempts. Try again later."})
         response.headers["Retry-After"] = str(wait)
+        request.state.usage_event = "blocked_logins"
         return response
     ok = await run_in_threadpool(verify_password, username, password)
     if not ok:
         login_limiter.record_failure(username)
         logger.warning("Login failed for user=%s", username)
+        request.state.usage_event = "failed_logins"
         return _json(401, {"error": "Invalid username or password"})
     login_limiter.reset(username)
     logger.info("Login successful for user=%s", username)
+    request.state.usage_event = "logins"
     return _json(200, {"token": create_token(username)})
+
+
+# -- Usage --
+
+
+def _parse_day(value: str) -> date | None:
+    try:
+        if len(value) != 10:  # strptime accepts "2026-1-1"
+            return None
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+@app.get("/usage", dependencies=[Depends(require_auth)])
+def get_usage(from_: str | None = Query(None, alias="from"), to: str | None = None, db=Depends(get_db)):
+    today = usage.today()
+    to_day = today if to is None else _parse_day(to)
+    from_day = None if from_ is not None else (to_day - timedelta(days=29) if to_day else None)
+    if from_ is not None:
+        from_day = _parse_day(from_)
+    if to_day is None or from_day is None:
+        return _json(400, {"error": "Dates must be YYYY-MM-DD"})
+    from_day = max(from_day, usage.retention_cutoff(today))
+    if from_day > to_day:
+        return _json(400, {"error": "from must not be after to"})
+    rows = db.get_usage(from_day.isoformat(), to_day.isoformat())
+    return _json(
+        200,
+        {"from": from_day.isoformat(), "to": to_day.isoformat(), "rows": rows, "summary": usage.summarise(rows)},
+    )
 
 
 # -- Candidates --

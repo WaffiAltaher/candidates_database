@@ -16,6 +16,7 @@ anthropic = "^0.86.0"
 fastapi = "*"
 uvicorn = {version = "*", extras = ["standard"]}
 maxminddb = "*"
+tzdata = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
