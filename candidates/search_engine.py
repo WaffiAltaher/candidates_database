@@ -27,7 +27,8 @@ Rules:
 - Use GROUP BY and HAVING when counting or aggregating
 - The technologies table has one row per technology per candidate
 - Always include candidate name in results for identification
-- {case_instruction}"""
+- {case_instruction}
+- Never query or mention the usage_daily table; it holds app usage statistics, not CV data"""
 
 SUMMARIZATION_PROMPT = """You are a helpful assistant summarizing CV database search results.
 

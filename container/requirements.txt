@@ -7,3 +7,4 @@ PyMuPDF
 PyYAML
 python-dotenv
 maxminddb
+tzdata
