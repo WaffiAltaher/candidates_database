@@ -18,6 +18,10 @@ The container connects to Scaleway Serverless SQL Database (PostgreSQL)
 
 Every response carries a strict CSP (scripts only from our own files), HSTS, `nosniff`, `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer` (`SECURITY_HEADERS` in `container/main.py`). Frontend pages must not use inline `<script>` blocks or `on…=` attributes; put code in `frontend/<page>.js` and use `addEventListener`.
 
+### Usage logging
+
+Every request writes one logfmt line (`event=request`, user, truncated client network, country) to the container log, which Scaleway Cockpit keeps for 7 days. The same events are counted per day in the `usage_daily` table, kept 12 months. The full IP is never stored. Fields, queries, privacy and data-subject requests: `docs/usage-logging.md`; rationale: `docs/adr/0002-log-truncated-client-networks.md`.
+
 ## Project Structure
 
 ```
@@ -47,6 +51,7 @@ candidates_database/
 │                            # claude-queue.yml feeds ready-for-agent issues to Claude (docs/claude-queue.md)
 ├── .github/scripts/         # claude-queue.js (label logic for the Claude queue) + its tests
 ├── docs/deployment.md       # Build, release, roll back (read this before shipping)
+├── docs/usage-logging.md    # What usage is logged, retention, privacy, Grafana queries
 ├── docs/claude-queue.md     # How the Claude issue queue works
 ├── docs/agents/             # Issue tracker and domain-doc rules for agent skills
 ├── GLOSSARY.md              # Project vocabulary (domain and delivery terms)
@@ -99,6 +104,7 @@ poetry run pytest
 | `AUTH_USERS` | JSON map of username -> scrypt password hash (see Managing Users) | Yes |
 | `ALLOWED_ORIGIN` | CORS allowed origin | Production |
 | `DB_POOL_MAX` | Max PostgreSQL connections per container instance (per URL) | No (default: 4) |
+| `GEOIP_DB_PATH` | Path to the DB-IP Country Lite `.mmdb` file used for the country in usage logs | No (default: /app/geoip/dbip-country-lite.mmdb) |
 | `LOG_LEVEL` | Logging level | No (default: INFO) |
 
 ### Deployment

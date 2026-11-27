@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 
 os.environ.setdefault("AUTH_SECRET", "test-secret-that-is-long-enough-123")
@@ -58,3 +59,10 @@ def test_unknown_file_is_404(client):
 def test_every_page_links_usage(page):
     html = (FRONTEND / f"{page}.html").read_text(encoding="utf-8")
     assert 'href="/usage.html"' in html
+
+
+def test_login_page_has_usage_notice():
+    html = (FRONTEND / "login.html").read_text(encoding="utf-8")
+    assert "docs/usage-logging.md#privacy" in html
+    scripts = re.findall(r"<script\b[^>]*>", html)
+    assert scripts and all("src=" in tag for tag in scripts)
