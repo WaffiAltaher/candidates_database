@@ -6,4 +6,4 @@ allowed_origin = "https://candidates.ittopia.nl"
 # Image tag that production runs. The Build image workflow opens a PR that
 # sets this to the commit SHA it built. Never set it to a tag that has not
 # been pushed: the Deploy workflow refuses to run in that case.
-image_tag = "34c94763257f28a88ad8cbcfcef8cc24e4305229"
+image_tag = "f6c3aff0d0d0eba36f581d0674e0ac21a56d06b9"
