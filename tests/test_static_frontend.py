@@ -31,7 +31,7 @@ def test_index_served_at_root(client):
     assert (FRONTEND / "index.html").read_text(encoding="utf-8") in resp.text
 
 
-@pytest.mark.parametrize("path", ["/login.html", "/candidate.html", "/app.js"])
+@pytest.mark.parametrize("path", ["/login.html", "/candidate.html", "/app.js", "/usage.html", "/usage.js"])
 def test_frontend_files_served(client, path):
     assert client.get(path).status_code == 200
 
@@ -52,3 +52,9 @@ def test_login_still_works(client):
 
 def test_unknown_file_is_404(client):
     assert client.get("/does-not-exist.html").status_code == 404
+
+
+@pytest.mark.parametrize("page", ["index", "search", "candidate", "upload", "usage"])
+def test_every_page_links_usage(page):
+    html = (FRONTEND / f"{page}.html").read_text(encoding="utf-8")
+    assert 'href="/usage.html"' in html
